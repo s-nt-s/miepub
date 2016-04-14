@@ -1,56 +1,70 @@
 #!/bin/bash
 
+TMP=$(mktemp -d)
 SCP=$(dirname $(realpath "$0"))
 DIR=$(pwd)
-MD=`ls *.md | head -n 1`
-if [ -z "$MD" ]; then
-	echo "Markdown no encontrado"
-	exit 1
-fi
-echo "Convirtiendo $MD"
 
-EPUB=`echo $MD | sed 's/md$/epub/'`
-
-TMP=$(mktemp -d)
-
-cp "$MD" "$TMP"
-
-TMD="$TMP/$MD"
-sed -r 's/^([\t ]*)[ivxdlcm]+\. /\1#. /i' -i "$TMD"
-sed -r 's/^([\t ]*[A-Z])\. /\1) /i' -i "$TMD"
-sed -r 's/^([1-9]+[0-9]*)\) /\1\\) /' -i "$TMD"
-
-NT=0
-if grep --quiet "\[\^1\]" "$TMD"; then
-	NT=1
-	if ! grep --quiet "^# Notas" "$TMD"; then
-		echo "" >> "$TMD"
-		echo "# Notas" >> "$TMD"
-		echo "" >> "$TMD"
+if [[ -f $1 ]]; then
+	IN="$1"
+else
+	IN=`ls *.md | head -n 1`
+	if [ -z "$IN" ]; then
+		echo "Markdown no encontrado"
+		exit 1
 	fi
 fi
 
-if [ -f "~/.pandoc/epub.css" ]; then
-	cp ~/.pandoc/epub.css ~/.pandoc/epub.css.bak
+echo "Convirtiendo $IN"
+
+if [[ -z $2 ]]; then
+	EPUB=`echo $IN | sed 's/\.[^\.]*$/\.epub/'`
+else
+	EPUB="$2"
 fi
 
-if [ -f "$DIR/epub.css" ]; then
-	cp "$DIR/epub.css" ~/.pandoc/
-elif [ -f "$SCP/epub.css" ]; then
-	cp "$SCP/epub.css" ~/.pandoc/
-fi
+cp "$IN" "$TMP"
 
-echo "Ejecutando pandoc"
-pandoc -S --from markdown+ascii_identifiers -o "$TMP/$EPUB" "$TMD"
+NT=0
+if [[ $IN == *.md ]]; then
+	TMD="$TMP/$IN"
+	sed -r 's/^([\t ]*)[ivxdlcm]+\. /\1#. /i' -i "$TMD"
+	sed -r 's/^([\t ]*[A-Z])\. /\1) /i' -i "$TMD"
+	sed -r 's/^([1-9]+[0-9]*)\) /\1\\) /' -i "$TMD"
 
-if [ -f "~/.pandoc/epub.css.bak" ]; then
-	cp ~/.pandoc/epub.css.bak ~/.pandoc/epub.css
-	rm ~/.pandoc/epub.css.bak
+	if grep --quiet "\[\^1\]" "$TMD"; then
+		NT=1
+		if ! grep --quiet "^# Notas" "$TMD"; then
+			echo "" >> "$TMD"
+			echo "# Notas" >> "$TMD"
+			echo "" >> "$TMD"
+		fi
+	fi
+
+	if [ -f "~/.pandoc/epub.css" ]; then
+		cp ~/.pandoc/epub.css ~/.pandoc/epub.css.bak
+	fi
+
+	if [ -f "$DIR/epub.css" ]; then
+		cp "$DIR/epub.css" ~/.pandoc/
+	elif [ -f "$SCP/epub.css" ]; then
+		cp "$SCP/epub.css" ~/.pandoc/
+	fi
+
+	echo "Ejecutando pandoc"
+	pandoc -S --from markdown+ascii_identifiers -o "$TMP/$EPUB" "$TMD"
+
+	if [ -f "~/.pandoc/epub.css.bak" ]; then
+		cp ~/.pandoc/epub.css.bak ~/.pandoc/epub.css
+		rm ~/.pandoc/epub.css.bak
+	fi
+else
+	echo "Ejecutando pandoc"
+	pandoc -o "$TMP/$EPUB" "$IN"
 fi
 
 cd "$TMP"
 
-rm "$MD"
+rm "$IN" 2> /dev/null
 
 unzip -q "$EPUB"
 
@@ -73,3 +87,5 @@ fi
 
 zip -r -q "$EPUB" *
 cp "$EPUB" "$DIR/$EPUB"
+
+echo "$EPUB creado"

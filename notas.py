@@ -50,6 +50,7 @@ for n in dnotas:
 	n.insert(0,sup)
 	n.insert(1," ")
 	a=n.select("a")[-1]
+	a['class']="volver"
 	a.insert_before(" ")
 	a.string="<<"
 

@@ -23,6 +23,9 @@ table {
 img {
 	max-width:100%;
 }
+a.volver, a.footnoteRef {
+	text-decoration:none;
+}
 /*
 ol[style="list-style-type: upper-roman"], ol[style="list-style-type: lower-roman"] {
 	list-style-type: decimal !important;
