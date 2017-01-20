@@ -3,6 +3,7 @@
 TMP=$(mktemp -d)
 SCP=$(dirname $(realpath "$0"))
 DIR=$(pwd)
+PORTADA="$DIR/portada.jpg"
 
 ASCII_ID=1
 
@@ -55,29 +56,39 @@ if [[ $IN == *.md ]]; then
 	echo "Ejecutando pandoc"
 	
 	ASCII_ID=0
-	if [ -f "$DIR/portada.jpg" ]; then
-		pandoc -S --toc-depth=2 --from markdown+ascii_identifiers --epub-cover-image="$DIR/portada.jpg" -o "$TMP/$EPUB" "$TMD"
+	if [ -f "$PORTADA" ]; then
+		pandoc -S --toc-depth=2 --from markdown+ascii_identifiers --epub-cover-image="$PORTADA" -o "$TMP/$EPUB" "$TMD"
 	else
 		pandoc -S --toc-depth=2 --from markdown+ascii_identifiers -o "$TMP/$EPUB" "$TMD"
 	fi
-	
 
 	if [ -f "~/.pandoc/epub.css.bak" ]; then
 		cp ~/.pandoc/epub.css.bak ~/.pandoc/epub.css
 		rm ~/.pandoc/epub.css.bak
 	fi
 else
+
+	if [ ! -f "$PORTADA" ]; then
+		PORTADA=$(grep -ohP "<meta[^>]+>" "$IN" | sed -e '/og:image/!d' -e 's/.*content="\([^"]*\)".*/\1/')
+		if [[ $PORTADA == http* ]]; then
+			wget "$PORTADA" --quiet --directory-prefix="$TMP"
+			PORTADA="$TMP/${PORTADA##*/}"
+		elif [ -f "$DIR/$PORTADA" ]; then
+			$PORTADA="$DIR/$PORTADA"
+		fi
+	fi
+
 	echo "Ejecutando pandoc"
-	if [ -f "$DIR/portada.jpg" ]; then
-		pandoc --ascii --toc-depth=2 --epub-cover-image="$DIR/portada.jpg" -o "$TMP/$EPUB" "$IN"
+	if [ -f "$PORTADA" ]; then
+		pandoc --toc-depth=2 --epub-cover-image="$PORTADA" -o "$TMP/$EPUB" "$IN"
 	else
-		pandoc --ascii --toc-depth=2 -o "$TMP/$EPUB" "$IN"
+		pandoc --toc-depth=2 -o "$TMP/$EPUB" "$IN"
 	fi
 fi
 
 cd "$TMP"
 
-rm "$IN" 2> /dev/null
+find . -type f -not -name "$EPUB" -delete
 
 unzip -q "$EPUB"
 
