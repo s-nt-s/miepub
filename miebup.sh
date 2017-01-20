@@ -4,6 +4,8 @@ TMP=$(mktemp -d)
 SCP=$(dirname $(realpath "$0"))
 DIR=$(pwd)
 
+ASCII_ID=1
+
 if [[ -f $1 ]]; then
 	IN="$1"
 else
@@ -51,7 +53,14 @@ if [[ $IN == *.md ]]; then
 	fi
 
 	echo "Ejecutando pandoc"
-	pandoc -S --from markdown+ascii_identifiers -o "$TMP/$EPUB" "$TMD"
+	
+	ASCII_ID=0
+	if [ -f "$DIR/portada.jpg" ]; then
+		pandoc -S --toc-depth=2 --from markdown+ascii_identifiers --epub-cover-image="$DIR/portada.jpg" -o "$TMP/$EPUB" "$TMD"
+	else
+		pandoc -S --toc-depth=2 --from markdown+ascii_identifiers -o "$TMP/$EPUB" "$TMD"
+	fi
+	
 
 	if [ -f "~/.pandoc/epub.css.bak" ]; then
 		cp ~/.pandoc/epub.css.bak ~/.pandoc/epub.css
@@ -59,7 +68,11 @@ if [[ $IN == *.md ]]; then
 	fi
 else
 	echo "Ejecutando pandoc"
-	pandoc -o "$TMP/$EPUB" "$IN"
+	if [ -f "$DIR/portada.jpg" ]; then
+		pandoc --ascii --toc-depth=2 --epub-cover-image="$DIR/portada.jpg" -o "$TMP/$EPUB" "$IN"
+	else
+		pandoc --ascii --toc-depth=2 -o "$TMP/$EPUB" "$IN"
+	fi
 fi
 
 cd "$TMP"
@@ -79,6 +92,12 @@ sed '/<itemref idref="title_page" /d' -i content.opf
 sed '/<itemref idref="nav" /d' -i content.opf
 sed '/href="nav.xhtml"/d' -i content.opf
 perl -0777 -pe 's/\s*<navPoint id=.navPoint-0.>\s*<navLabel>\s*<text>.*?\s*<\/navLabel>\s*<content src="title_page.xhtml" \/>\s*<\/navPoint>//igs' -i toc.ncx
+
+if [ $ASCII_ID -eq 1 ]; then
+	echo "Limpiando identificadores"
+	perl -ple 'sub clean{ my ($s)=@_; $s =~ s/[^[:ascii:]]/-/g; return $s;}; s/#([^"]+)/"#" . clean($1)/e' -i toc.ncx
+	perl -ple 'sub clean{ my ($s)=@_; $s =~ s/[^[:ascii:]]/-/g; return $s;}; s/<div id="([^"]+)/"<div id=\"" . clean($1)/ge' -i ch00*.xhtml
+fi
 
 if [ $NT -eq 1 ]; then
 	echo "Generando notas"
