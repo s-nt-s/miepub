@@ -67,6 +67,7 @@ if [[ $IN == *.md ]]; then
 		rm ~/.pandoc/epub.css.bak
 	fi
 else
+	sed -e '/<meta[^>]*name="DC\..*/!d' -e 's/.*content="\([^"]*\).*name="DC\.\([^"]*\).*/<dc:\2>\1<\/dc:\2>/' "$IN" > "$TMP/metadata.xml"
 
 	if [ ! -f "$PORTADA" ]; then
 		PORTADA=$(grep -ohP "<meta[^>]+>" "$IN" | sed -e '/og:image/!d' -e 's/.*content="\([^"]*\)".*/\1/')
@@ -80,9 +81,9 @@ else
 
 	echo "Ejecutando pandoc"
 	if [ -f "$PORTADA" ]; then
-		pandoc --toc-depth=2 --epub-cover-image="$PORTADA" -o "$TMP/$EPUB" "$IN"
+		pandoc --toc-depth=2 --epub-cover-image="$PORTADA" -o "$TMP/$EPUB" --epub-metadata="$TMP/metadata.xml" "$IN"
 	else
-		pandoc --toc-depth=2 -o "$TMP/$EPUB" "$IN"
+		pandoc --toc-depth=2 -o "$TMP/$EPUB" --epub-metadata="$TMP/metadata.xml" "$IN"
 	fi
 fi
 
@@ -99,7 +100,9 @@ rm title_page.xhtml
 
 sed '/<item id="nav" /d' -i content.opf
 sed '/<item id="title_page" /d' -i content.opf
+sed '/<item id="title_page_xhtml" /d' -i content.opf
 sed '/<itemref idref="title_page" /d' -i content.opf
+sed '/<itemref idref="title_page_xhtml" /d' -i content.opf
 sed '/<itemref idref="nav" /d' -i content.opf
 sed '/href="nav.xhtml"/d' -i content.opf
 perl -0777 -pe 's/\s*<navPoint id=.navPoint-0.>\s*<navLabel>\s*<text>.*?\s*<\/navLabel>\s*<content src="title_page.xhtml" \/>\s*<\/navPoint>//igs' -i toc.ncx
