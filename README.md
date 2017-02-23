@@ -1,4 +1,4 @@
-Script sencillo para generar epub sorteando algunos bugs de (pandoc)[https://github.com/jgm/pandoc/].
+Script sencillo para generar epub sorteando algunos bugs de [pandoc](https://github.com/jgm/pandoc/).
 
 Uso: `miepub.sh fichero_fuente`
 
