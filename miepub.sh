@@ -118,6 +118,52 @@ if [ $NT -eq 1 ]; then
 	python "$SCP/notas.py"
 fi
 
+list=`find . -type f -regextype posix-extended -regex '.*\.(jpg|png|jpeg)'`
+length=`echo "$list" | wc -l`
+if [ $length -ne 0 ]; then
+    echo "$length imagenes encontradas"
+    count=0
+    difkb=0
+    for file in $list; do
+        antes=`stat --printf="%s" "$file"`
+        exiftool -overwrite_original -q -all= "$file"
+        despues=`stat --printf="%s" "$file"`
+        differencia=`expr $antes - $despues`
+        difkb=`expr $difkb + $differencia`
+    
+        cp "$file" "$file.ori"
+        antes=`stat --printf="%s" "$file"`
+        ancho_antes=`identify -format "%w" "$file"`
+        alto_antes=`identify -format "%h" "$file"`
+        mogrify -strip +repage -trim -fuzz 5 "$file"
+        picopt --quiet --destroy_metadata --comics --enable_advpng "$file"
+        despues=`stat --printf="%s" "$file"`
+        ancho_despues=`identify -format "%w" "$file"`
+        alto_despues=`identify -format "%h" "$file"`
+        differencia=`expr $antes - $despues`
+        
+        differencia_alto=`expr $alto_antes - $alto_despues`
+        differencia_ancho=`expr $ancho_antes - $ancho_despues`
+        if [ "$differencia_alto" -gt 2 ] || [ "$differencia_ancho" -gt 2 ] || [ "$differencia" -gt 2 ]; then
+            if [ "$differencia" -lt -1048576 ] ; then
+                if [[ $file == *.jpg ]] || [[ $file == *.jpeg ]]; then
+                    mogrify -define jpeg:extent=${antes}b "$file"
+                    despues=`stat --printf="%s" "$file"`
+                    differencia=`expr $antes - $despues`
+                fi
+            fi
+            #echo "$file pasa de $ancho_antes x $alto_antes a $ancho_despues x $alto_despues ($differencia bytes menos)"
+            count=`expr $count + 1`
+            difkb=`expr $difkb + $differencia`
+        else
+            cp "$file.ori" "$file"
+        fi
+        rm "$file.ori"
+    done
+    difkb=`expr $difkb / 1024`
+    echo "$count imagenes retocadas, $difkb KB ahorrados"
+fi
+
 zip -r -q "$EPUB" *
 cp "$EPUB" "$DIR/$EPUB"
 
