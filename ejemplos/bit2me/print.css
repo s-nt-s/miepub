@@ -1,0 +1,18 @@
+@page {
+	margin-bottom: 5pt;
+	margin-top: 5pt
+}
+img {
+	max-width:100%;
+}
+figure {
+    display: inline-block;
+    margin: 0px;
+}
+figure figcaption {
+    font-size: 75%;
+    text-align: center;
+}
+h1, h2 {
+    margin-top: 0em;
+}

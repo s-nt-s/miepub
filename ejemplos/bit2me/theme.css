@@ -1,0 +1,8 @@
+figure {
+    display: inline-block;
+    margin: 0px;
+}
+figure figcaption {
+    font-size: 75%;
+    text-align: center;
+}

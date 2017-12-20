@@ -1,0 +1,4 @@
+ignore/
+ejemplos/*/*.html
+ejemplos/*/*.epub
+__pycache__
