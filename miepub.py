@@ -10,7 +10,6 @@ import shutil
 import pypandoc
 import argparse
 import re
-import tempfile
 import shutil
 import urllib.request
 import pypandoc
@@ -21,6 +20,7 @@ import htmlmin
 from subprocess import call, check_output
 from PIL import Image
 import sys
+import yaml
 
 parser = argparse.ArgumentParser(
     description='Genera epub')
@@ -30,11 +30,15 @@ parser.add_argument("--toc", type=int,
 parser.add_argument("--cover", help="Imagen de portada")  # --epub-cover-image
 parser.add_argument("--metadata", help="Metadatos del epub")  # --epub-metadata
 parser.add_argument("--css", help="Estilos del epub")  # --epub-stylesheet
+parser.add_argument("--chapter-level", help="Nivel de divisón de capitulos") # --epub-chapter-level
 parser.add_argument("--gray", help="Convertir imagenes a blanco y negro",
                     action='store_true', default=False)
 parser.add_argument("--trim", help="Recorta los margenes de las imagenes",
                     action='store_true', default=False)
-parser.add_argument("--width", type=int, help="Ancho máximo para las imagenes")
+parser.add_argument("--copy-class", help="Copiar el atributo class de la fuente al epub",
+                    action='store_true', default=False)
+parser.add_argument("--width", type=int, help="Ancho máximo para las imágenes")
+parser.add_argument("--notas", help="Nombre del capítulo donde se quieren generar las notas (por defecto se usara el último capítulo)")
 parser.add_argument(
     "--execute", help="Ejecuta script sobre el epub antes de empaquetarlo")
 parser.add_argument("fuente", help="Fichero de entrada")
@@ -42,6 +46,7 @@ parser.add_argument("fuente", help="Fichero de entrada")
 arg = parser.parse_args()
 
 sp = re.compile(r"\s+", re.MULTILINE | re.UNICODE)
+class_name = re.compile(r"\.(\S+)")
 tipo_fuente = re.compile(r"^(.*)\.(md|html)$")
 no_content = re.compile(
     r'<item id="nav" |<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml" |<itemref idref="nav" |href="nav.xhtml')
@@ -53,7 +58,9 @@ if not tipo_fuente.match(arg.fuente):
 if arg.execute and (not os.path.isfile(arg.execute) or not os.access(arg.execute, os.X_OK)):
     sys.exit(arg.execute + " no es un programa ejecutable")
 
-# = os.getcwd()
+
+arg.html = arg.fuente.endswith(".html")
+arg.md = arg.fuente.endswith(".md")
 arg.fuente = os.path.realpath(arg.fuente)
 arg.dir_fuente = os.path.dirname(arg.fuente)
 
@@ -67,12 +74,16 @@ prefix = os.path.basename(tipo_fuente.sub(
 
 mogrify = ["mogrify"]
 if arg.trim:
-    mogrify.extend(["-strip", "+repage", "-trim", "-fuzz", "600"])
+    mogrify.extend(["-strip", "+repage", "-fuzz", "600", "-trim"])
 if arg.gray:
     mogrify.extend(["-colorspace", "GRAY"])
 if arg.width:
     mogrify.extend(["-resize", str(arg.width) + ">"])
 
+tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
+tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
+tag_trim = ['li', 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
+tag_right = ['p']
 
 def sizeof_fmt(num, suffix='B'):
     for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
@@ -80,6 +91,88 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f %s%s" % (num, 'Y', suffix)
+
+def minify_soup(soup):
+    h = htmlmin.minify(str(soup), remove_empty_space=True)
+    for t in tag_concat:
+        r = re.compile(
+            "</" + t + ">(\s*)<" + t + ">", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\1", h)
+    for t in tag_round:
+        r = re.compile(
+            "(<" + t + ">)(\s+)", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\2\\1", h)
+        r = re.compile(
+            "(<" + t + " [^>]+>)(\s+)", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\2\\1", h)
+        r = re.compile(
+            "(\s+)(</" + t + ">)", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\2\\1", h)
+    for t in tag_trim:
+        r = re.compile(
+            "(<" + t + ">)\s+", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\1", h)
+        r = re.compile(
+            "\s+(</" + t + ">)", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\1", h)
+    for t in tag_right:
+        r = re.compile(
+            "\s+(</" + t + ">)", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\1", h)
+        r = re.compile(
+            "(<" + t + ">) +", re.MULTILINE | re.DOTALL | re.UNICODE)
+        h = r.sub("\\1", h)
+    return h
+
+
+def descargar(url, dwn):
+    try:
+        urllib.request.urlretrieve(url, dwn)
+    except:
+        call(["wget", url, "--quiet", "-O", dwn])
+
+def simplifica(s):
+    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii', 'ignore')    
+
+def optimizar(s):
+    antes = os.path.getsize(s)
+    c = tmp_wks + "/" + os.path.basename(s)
+    shutil.copy(s, c)
+    if len(mogrify) > 1:
+        call(mogrify + [c])
+    call(["picopt", "--quiet", "--destroy_metadata",
+          "--comics", "--enable_advpng", c])
+    despues = os.path.getsize(c)
+    if antes > despues:
+        shutil.move(c, s)
+
+def get_yaml(md):
+    with open(md,"r") as f:
+        itr = iter(f)
+        if next(itr) != '---\n':
+            return {}
+        yml = ""
+        for line in itr:
+            if line == '---\n':
+                return yaml.load(yml.rstrip())
+            yml += line
+    return {}
+
+def extra_arguments(extra):
+    if not extra:
+        return
+    if isinstance(extra, bs4.Tag):
+        extra = extra.attrs["content"]
+    extra = sp.sub(" ", extra).strip()
+    if len(extra)==0:
+        return
+    print ("Argumentos extra: "+extra)
+    extra = extra.split(" ")
+    if '--copy-class' in extra:
+        arg.copy_class = True
+        extra.remove('--copy-class')
+    extra_args.extend(extra)
+
 
 tmp = tempfile.mkdtemp(prefix=prefix)
 
@@ -93,18 +186,25 @@ os.mkdir(tmp_in)
 os.mkdir(tmp_out)
 os.mkdir(tmp_wks)
 
-if arg.fuente.endswith(".html"):
+clases = []
+extra_args = []
+yml = None
+
+if arg.md:
+    yml = get_yaml(arg.fuente)
+    extra_arguments(yml.get("pandoc", None))
+
+if arg.html:
     with open(arg.fuente, "rb") as f:
         soup = bs4.BeautifulSoup(f, "lxml")
+        extra_arguments(soup.find("meta", {"name" : "pandoc"}))
         if not arg.metadata:
             meta = ""
-            for m in soup.select("meta"):
-                if "name" in m.attrs and "content" in m.attrs:
-                    n = m.attrs["name"].lower()
-                    c = m.attrs["content"]
-                    if n.startswith("dc."):
-                        n = "dc:" + n[3:]
-                        meta += "<%s>%s</%s>\n" % (n, c, n)
+            for m in soup.findAll("meta", {"name" : re.compile(r"^dc\.", re.IGNORECASE)}):
+                n = m.attrs["name"].lower()
+                c = m.attrs["content"]
+                n = "dc:" + n[3:]
+                meta += "<%s>%s</%s>\n" % (n, c, n)
             if len(meta) > 0:
                 print ("Recuperados metadatos del html")
                 arg.metadata = tmp_in + "/metadata.xml"
@@ -119,13 +219,13 @@ if arg.fuente.endswith(".html"):
             c = soup.find("link", attrs={'media': "print"})
             if c and "type" in c.attrs and c.attrs["type"] == "text/css":
                 arg.css = c.attrs["href"]
+        if arg.css and arg.copy_class:
+            with open(arg.css, "r") as c:
+                class_names = class_name.findall(c.read())
+                if len(class_names):
+                    class_names = "." + ", .".join(class_names)
+                    clases = soup.select(class_names)
 
-
-def descargar(url, dwn):
-    try:
-        urllib.request.urlretrieve(url, dwn)
-    except:
-        call(["wget", url, "--quiet", "-O", dwn])
 
 if arg.cover and arg.cover.startswith("http"):
     print ("Descargando portada de " + arg.cover)
@@ -134,22 +234,25 @@ if arg.cover and arg.cover.startswith("http"):
     descargar(arg.cover, dwn)
     arg.cover = dwn
 
-if arg.css and arg.cover.startswith("http"):
+if arg.css and arg.css.startswith("http"):
     print ("Descargando css de " + arg.css)
     dwn = tmp_in + "/" + os.path.basename(arg.css)
     descargar(arg.cover, dwn)
     arg.css = dwn
 
-extra_args = ['--toc-depth', str(arg.toc)]
-if arg.cover:
+if '--toc-depth' not in extra_args:
+    extra_args.extend(['--toc-depth', str(arg.toc)])
+if arg.cover and '--epub-cover-image' not in extra_args:
     extra_args.extend(['--epub-cover-image', arg.cover])
-if arg.metadata:
+if arg.metadata and '--epub-metadata' not in extra_args:
     extra_args.extend(['--epub-metadata', arg.metadata])
-if arg.css:
+if arg.css and  '--epub-stylesheet' not in extra_args:
     extra_args.extend(['--epub-stylesheet', arg.css])
-if arg.fuente.endswith(".html"):
+if arg.html and '--parse-raw' not in extra_args:
     extra_args.append('--parse-raw')
-
+if arg.chapter_level and '--epub-chapter-level' not in extra_args:
+    extra_args.extend(['--epub-chapter-level', arg.chapter_level])
+    
 
 print ("Convirtiendo con pandoc")
 pypandoc.convert_file(arg.fuente,
@@ -173,10 +276,6 @@ with open(tmp_out + "/content.opf", "r+") as f:
     f.seek(0)
     f.write("".join(d))
     f.truncate()
-
-
-def simplifica(s):
-    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii', 'ignore')
 
 marcas = {}
 
@@ -220,6 +319,14 @@ notas = []
 xnota = os.path.basename(xhtml[-1])
 count = 1
 
+if arg.notas:
+    for html in xhtml:
+        with open(html, "r+") as f:
+            soup = bs4.BeautifulSoup(f, "xml")
+            if soup.find("h1",text=arg.notas):
+                xnota = os.path.basename(html)
+                break
+
 for html in xhtml:
     chml = os.path.basename(html)
     with open(html, "r+") as f:
@@ -227,7 +334,7 @@ for html in xhtml:
         for c in soup.select("div"):
             if "id" in c.attrs and c.attrs["id"] in marcas:
                 c.attrs["id"] = marcas[c.attrs["id"]]
-        for p in soup.select("table p, figure p"):
+        for p in soup.select("table p") + soup.select("figure p"):
             p.unwrap()
         for i in soup.select("img"):
             if "src" in i.attrs and i.attrs["src"] in imgdup:
@@ -265,23 +372,23 @@ for html in xhtml:
             for n in notas:
                 div.append(n)
 
-        minified = htmlmin.minify(str(soup), remove_empty_space=True)
+        for c in clases:
+            fnd = soup.find(lambda t: t.name == c.name and sp.sub(" ",t.get_text()).strip() == sp.sub(" ",c.get_text()).strip() )
+            if fnd and "class" not in fnd.attrs:
+                fnd.attrs["class"] = c.attrs["class"]
+
+        if arg.md:
+            for c in soup.findAll("cite"):
+                p = c.parent
+                q = p.parent
+                if q.name == "blockquote"  and p.name == "p" and sp.sub(" ",p.get_text()).strip() == sp.sub(" ",c.get_text()).strip():
+                    p.attrs["class"] = "cite"
+                    q.attrs["class"] = "cite"
+
+        minified = minify_soup(soup)
         f.seek(0)
         f.write(minified)
         f.truncate()
-
-
-def optimizar(s):
-    antes = os.path.getsize(s)
-    c = tmp_wks + "/" + os.path.basename(s)
-    shutil.copy(s, c)
-    if len(mogrify) > 1:
-        call(mogrify + [c])
-    call(["picopt", "--quiet", "--destroy_metadata",
-          "--comics", "--enable_advpng", c])
-    despues = os.path.getsize(c)
-    if antes > despues:
-        shutil.move(c, s)
 
 if arg.gray or arg.width or arg.trim and len(imgs) > 0:
     print ("Limpiando imagenes")
@@ -305,5 +412,16 @@ with zipfile.ZipFile(arg.out, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for f in files:
             path = os.path.join(root, f)
             zip_file.write(path, path[z:])
+
+if yml:
+    metadata = []
+    if len(yml.get("tags", []))>0:
+        tags = "," .join(yml.get("tags"))
+        metadata.extend(["--tags", tags])
+    if yml.get("category", False):
+        metadata.extend(["--category", yml.get("category")])
+    if len(metadata)>0:
+        print (str(metadata))
+        check_output(["ebook-meta"] + metadata + [arg.out])
 
 print ("Epub final de " + sizeof_fmt(os.path.getsize(arg.out)))
