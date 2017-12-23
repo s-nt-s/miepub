@@ -88,7 +88,7 @@ for li in lis:
     for l in li.findAll("li"):
         append(body, l, "h2")
 
-lmp = Limpiar(out, Bunch(noscript=True, iframe_to_anchor=True, resolve_images=True, clear_attr=heads + ["p", "figure", "ul", "ol", "img", "a"]))
+lmp = Limpiar(out, noscript=True, iframe_to_anchor=True, resolve_images=True, clear_attr=heads + ["p", "figure", "ul", "ol", "img", "a"])
 lmp.limpiar()
 out = lmp.soup
 

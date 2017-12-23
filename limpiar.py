@@ -17,6 +17,8 @@ heads = ["h1", "h2", "h3", "h4", "h5", "h6"]
 block = heads + ["p", "div", "table", "article"]
 inline = ["span", "strong", "b", "del", "i", "em"]
 
+attrs_imp = ["src", "target", "href", "id", "class", "colspan", "rowspan" ]
+
 urls = ["#", "javascript:void(0)"]
 
 def load(html):
@@ -50,9 +52,12 @@ def version_de(src1, src2):
 
 class Limpiar:
 
-    def __init__(self, html, opciones):
+    def __init__(self, html, noscript=False, iframe_to_anchor=False, resolve_images=False, clear_attr=None):
         self.load(html)
-        self.op = opciones
+        self.noscript = noscript
+        self.iframe_to_anchor = iframe_to_anchor
+        self.resolve_images = resolve_images
+        self.clear_attr = (clear_attr or [])
 
     def load(self, html):
         self.soup, self.html, self.origen = load(html)
@@ -64,12 +69,12 @@ class Limpiar:
     def limpiar_soup(self):
         for n in self.soup.findAll(text=lambda text: isinstance(text, bs4.Comment)):
             n.extract()
-        if self.op.noscript:
+        if self.noscript:
             for n in self.soup.findAll("script"):
                 n.extract()
             for n in self.soup.findAll("noscript"):
                 n.unwrap()
-        if self.op.iframe_to_anchor:
+        if self.iframe_to_anchor:
             for i in self.soup.findAll("iframe"):
                 src = i.attrs["src"]
                 busca_href = src
@@ -91,7 +96,7 @@ class Limpiar:
                     i.attrs["href"] = src
                     i.attrs["target"] = "_blank"
                     i.string=src
-        if self.op.resolve_images:
+        if self.resolve_images:
             for img in self.soup.select("a > img"):
                 a = img.parent
                 if vacio(a) and a.name == "a":
@@ -138,16 +143,9 @@ class Limpiar:
                 txt2 = sp.sub("", i2[0].get_text()).strip()
                 if txt == txt2:
                     i.unwrap()
-        for n in (self.op.clear_attr or []):
+        for n in self.clear_attr:
             for i in self.soup.findAll(n):
-                attrs = {
-                    "src": i.attrs.get("src", None),
-                    "target": i.attrs.get("target", None),
-                    "href": i.attrs.get("href", None),
-                    "id": i.attrs.get("id", None),
-                    "class":  i.attrs.get("class", None)
-                }
-                attrs = {a:b for a,b in attrs.items() if b}
+                attrs = {a : i.attrs[a] for a in attrs_imp if a in i.attrs}
                 i.attrs.clear()
                 i.attrs = attrs
 
