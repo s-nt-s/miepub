@@ -16,3 +16,8 @@ figure figcaption {
 h1, h2 {
     margin-top: 0em;
 }
+span.mark {
+    font-size: 75%;
+    text-decoration: none;
+    vertical-align: top;
+}

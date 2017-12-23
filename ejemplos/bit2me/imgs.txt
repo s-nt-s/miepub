@@ -66,3 +66,4 @@ http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/06/sidechain_bitcoin.j
 http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/12/cryptography.jpg
 http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/05/money-660x406.jpg
 http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/01/transaccion_bitcoin.jpg
+http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/02/bitcoin_movil.jpg

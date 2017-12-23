@@ -30,7 +30,7 @@ def append(body, li, tag):
     h.attrs["id"] = _id
     body.append(h)
     url = a.attrs["href"]
-    ids[url] = _id
+    ids[url] = h
     
     if url != "#":
         soup = get(url)
@@ -96,6 +96,9 @@ for c in ".rt-reading-time, .share-before, .tm-click-to-tweet, .tm-tweet-clear".
     for s in out.select(c):
         s.extract()
 
+for a in out.findAll("a", attrs={"href": re.compile(r"https?://blog.bit2me.com/es/guia-bitcoin/?")}):
+    a.unwrap()
+
 scap = re.compile(r"^\s*Siguiente\s+cap.+tulo:\s", re.MULTILINE | re.DOTALL)
 for p in out.findAll("p"):
     s = p.get_text().strip()
@@ -118,7 +121,16 @@ for hr in out.findAll("hr"):
 for a in out.findAll("a"):
     url = a.attrs["href"]
     if url in ids:
-        a.attrs["href"] = "#" + ids[url]
+        h = ids[url]
+        i = h.get_text().split(" ")[0].strip()
+        i = re.sub(r"\.$", "", i)
+        a.attrs.clear()
+        a.attrs["href"] = "#" + h.attrs["id"]
+        a.insert(0, " ")
+        span = out.new_tag("span")
+        span.attrs["class"]="mark"
+        span.string = "[" + i +"]"
+        a.insert(0, span)
 
 for i in out.findAll("img"):
     if i.attrs["src"] in ban_imgs:
@@ -130,12 +142,22 @@ for i in out.findAll("img"):
             i.extract()
 
 for i in out.findAll("span"):
-    if "style" not in i.attrs:
+    if "style" not in i.attrs and "class" not in i.attrs:
         i.unwrap()
 
 lmp.load(out)
 lmp.limpiar()
 out = lmp.soup
+
+imgs=[]
+for i in out.findAll("img"):
+    src = i.attrs["src"]
+    if src in imgs and src != "http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/01/informacion_transaccion.png":
+        i.extract()
+    imgs.append(src)
+
+lmp.load(out)
+lmp.limpiar()
 
 html = lmp.html
 html = re.sub(r"Explorador (de )?blockchain a fondo: ", "blockchain.info: ", html)

@@ -6,3 +6,8 @@ figure figcaption {
     font-size: 75%;
     text-align: center;
 }
+span.mark {
+    font-size: 75%;
+    text-decoration: none;
+    vertical-align: top;
+}
