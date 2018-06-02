@@ -219,6 +219,12 @@ if arg.html:
             c = soup.find("link", attrs={'media': "print"})
             if c and "type" in c.attrs and c.attrs["type"] == "text/css":
                 arg.css = c.attrs["href"]
+                if not arg.css.startswith("http") and not os.path.isfile(arg.css):
+                    dir_fuente = os.path.dirname(arg.fuente)
+                    if not arg.css.startswith("/"):
+                        dir_fuente = dir_fuente +"/"
+                    arg.css =  dir_fuente + arg.css
+                    arg.css = os.path.realpath(arg.css)
         if arg.css and arg.copy_class:
             with open(arg.css, "r") as c:
                 class_names = class_name.findall(c.read())
@@ -311,7 +317,15 @@ while i < len(imgs) - 1:
         d = "media/" + os.path.basename(d)
         imgdup[d] = c
     i += 1
+
 if imgdup:
+    re_keys = [re.escape(k) for k in imgdup.keys()]
+    re_imgdup = re.compile("href=\"(" + "|".join(re_keys) + ")\"")
+    with open(tmp_out + "/content.opf", "r+") as f:
+        d = [l for l in f.readlines() if not re_imgdup.search(l)]
+        f.seek(0)
+        f.write("".join(d))
+        f.truncate()
     print ("Eliminadas imagenes duplicadas")
 
 xhtml = sorted(glob.glob(tmp_out + "/ch*.xhtml"))
@@ -406,12 +420,15 @@ if arg.gray or arg.width or arg.trim and len(imgs) > 0:
 if arg.execute:
     call([arg.execute, tmp_out, arg.fuente])
 
-with zipfile.ZipFile(arg.out, "w", zipfile.ZIP_DEFLATED) as zip_file:
+with zipfile.ZipFile(arg.out, "w") as zip_file:
+    zip_file.write(tmp_out + '/mimetype', 'mimetype', compress_type=zipfile.ZIP_STORED)
     z = len(tmp_out) + 1
     for root, dirs, files in os.walk(tmp_out):
         for f in files:
             path = os.path.join(root, f)
-            zip_file.write(path, path[z:])
+            name = path[z:]
+            if name != 'mimetype':
+                zip_file.write(path, name, compress_type=zipfile.ZIP_DEFLATED)
 
 if yml:
     metadata = []
