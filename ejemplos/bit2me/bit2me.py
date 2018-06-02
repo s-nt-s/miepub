@@ -17,12 +17,12 @@ def get(url):
     r = requests.get(url)
     return bs4.BeautifulSoup(r.content, "lxml")
 
-def append(body, li, tag):
+def append(body, li, nivel):
     global idc
     global ids
     
     a = li.find("a")
-    h = out.new_tag(tag)
+    h = out.new_tag("h"+str(nivel))
     h.string = a.get_text()
 
     idc += 1
@@ -37,16 +37,7 @@ def append(body, li, tag):
         div = soup.find("div", attrs={"class": "entry-content"})
         div.attrs.clear()
         div.name="article"
-        hs=[]
-        for i in range(1,7):
-            h = div.findAll("h"+str(i))
-            if len(h):
-                hs.append(h)
-        i = 3
-        for _h in hs:
-            for h in _h:
-                h.name = "h"+str(i)
-            i = i + 1
+        div = lmp.check_heads(nodo=div, inicio=2)#nivel)
         body.append(div)
 
 def sibling(n):
@@ -78,17 +69,19 @@ out = bs4.BeautifulSoup('''
     </body>
 </html>
 ''' , 'lxml')
+
+lmp = Limpiar(out, noscript=True, iframe_to_anchor=True, resolve_images=True, clear_attr=heads + ["p", "figure", "ul", "ol", "img", "a"])
+
 body = out.body
 
 libro=[]
 
 lis = soup.select("aside ul.menu > li")[1:]
 for li in lis:
-    append(body, li, "h1")
+    append(body, li, 1)
     for l in li.findAll("li"):
-        append(body, l, "h2")
+        append(body, l, 2)
 
-lmp = Limpiar(out, noscript=True, iframe_to_anchor=True, resolve_images=True, clear_attr=heads + ["p", "figure", "ul", "ol", "img", "a"])
 lmp.limpiar()
 out = lmp.soup
 
@@ -118,6 +111,23 @@ for hr in out.findAll("hr"):
     if a is None or b is None or a.name.startswith("h") or b.name.startswith("h"):
         hr.extract()
 
+for i in out.findAll("img"):
+    if i.attrs["src"] in ban_imgs:
+        p = i.parent
+        t = sp.sub("",p.get_text()).strip()
+        if p.name == "figure" or (p.name=="p" and len(t)==0):
+            p.extract()
+        else:
+            i.extract()
+
+for i in out.findAll("span"):
+    st = i.attrs.get("style", None)
+    if st:
+        i.attrs.clear()
+        i.attrs["style"] = st
+    else:
+        i.unwrap()
+
 for a in out.findAll("a"):
     url = a.attrs["href"]
     if url in ids:
@@ -132,19 +142,6 @@ for a in out.findAll("a"):
         span.string = "[" + i +"]"
         a.insert(0, span)
 
-for i in out.findAll("img"):
-    if i.attrs["src"] in ban_imgs:
-        p = i.parent
-        t = sp.sub("",p.get_text()).strip()
-        if p.name == "figure" or (p.name=="p" and len(t)==0):
-            p.extract()
-        else:
-            i.extract()
-
-for i in out.findAll("span"):
-    if "style" not in i.attrs and "class" not in i.attrs:
-        i.unwrap()
-
 lmp.load(out)
 lmp.limpiar()
 out = lmp.soup
@@ -152,9 +149,25 @@ out = lmp.soup
 imgs=[]
 for i in out.findAll("img"):
     src = i.attrs["src"]
+    alt = i.attrs.get("alt", src.split("/")[-1])
     if src in imgs and src != "http://blog.bit2me.com/es/wp-content/uploads/sites/2/2016/01/informacion_transaccion.png":
         i.extract()
+    else:
+        i.attrs.clear()
+        i.attrs = {
+            "src": src,
+            "alt": alt
+        }
     imgs.append(src)
+
+for h in out.findAll(heads):
+    p = h.parent
+    if p and p.name == "li":
+        h.unwrap()
+    else:
+        a, b = sibling(h)
+        if b and b.name.startswith("h") and int(b.name[1])<=int(h.name[1]):
+            h.name="p"
 
 lmp.load(out)
 lmp.limpiar()

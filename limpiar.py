@@ -17,7 +17,7 @@ heads = ["h1", "h2", "h3", "h4", "h5", "h6"]
 block = heads + ["p", "div", "table", "article"]
 inline = ["span", "strong", "b", "del", "i", "em"]
 
-attrs_imp = ["src", "target", "href", "id", "class", "colspan", "rowspan" ]
+attrs_imp = ["src", "href", "id", "class", "colspan", "rowspan", "alt" ]
 
 urls = ["#", "javascript:void(0)"]
 
@@ -93,6 +93,7 @@ class Limpiar:
                     i.extract()
                 else:
                     i.name="a"
+                    i.attrs.clear()
                     i.attrs["href"] = src
                     i.attrs["target"] = "_blank"
                     i.string=src
@@ -111,10 +112,6 @@ class Limpiar:
                         srcset = img.attrs.get("srcset", "").split(", ")[-1].split(" ")[0].strip()
                         if len(srcset)>0:
                             img.attrs["src"] = srcset
-            for i in self.soup.findAll("img"):
-                src = i["src"]
-                i.attrs.clear()
-                i["src"] = src
             for f in self.soup.findAll(["figure", "p", "li"]):
                 imgs = f.findAll("img")
                 if len(imgs)>1:
@@ -148,10 +145,47 @@ class Limpiar:
                 attrs = {a : i.attrs[a] for a in attrs_imp if a in i.attrs}
                 i.attrs.clear()
                 i.attrs = attrs
-
+        for n in self.soup.findAll():
+            for a in n.attrs:
+                v = n.attrs[a]
+                if isinstance(v, str):
+                    n.attrs[a] = v.strip()
+                elif isinstance(v, list):
+                    n.attrs[a] = [i.strip() for i in v]
+        self.check_heads()
         self.html = str(self.soup)
 
+    def check_heads(self, inicio=0, nodo=None):
+        if not nodo:
+            nodo = self.soup
+        hs=[]
+        for i in range(1,7):
+            h = nodo.findAll("h"+str(i))
+            if len(h):
+                hs.append(h)
+        i = inicio + 1
+        for _h in hs:
+            for h in _h:
+                h.name = "h"+str(i)
+            i = i + 1
+        '''
+        for i in range(6, inicio + 1,-1):
+            h1 = nodo.findAll("h"+str(i))
+            h0 = nodo.findAll("h"+str(i-1))
+            if len(h1)>0 and len(h0)==0:
+                for h in h1:
+                    h.name = "h" + str(i-1)
+        hs = nodo.findAll(["h"+str(i) for i in range(inicio+1, 7)])
+        i = 0
+        for h in hs:
+            n = int(h.name[1])
+            if i != 0 and n>i+1:
+                h.name = "h" + str(i+1)
+        '''
+        return nodo
+
     def limpiar_html(self):
+        self.html = self.html.replace('‎', '').strip()
         r = re.compile(r"(\s*\.\s*)</a>", re.MULTILINE | re.DOTALL)
         self.html = r.sub(r"</a>\1", self.html)
         for t in tag_concat:
