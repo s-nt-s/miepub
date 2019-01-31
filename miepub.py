@@ -173,6 +173,18 @@ def extra_arguments(extra):
         extra.remove('--copy-class')
     extra_args.extend(extra)
 
+def str_to_cmd(s):
+    arr=[]
+    flag=True
+    for i in s.split('"'):
+        flag = not flag
+        if flag:
+            arr.append(i)
+            continue
+        i=i.strip()
+        for c in i.split():
+            arr.append(c)
+    return arr
 
 tmp = tempfile.mkdtemp(prefix=prefix)
 
@@ -198,6 +210,9 @@ if arg.html:
     with open(arg.fuente, "rb") as f:
         soup = bs4.BeautifulSoup(f, "lxml")
         extra_arguments(soup.find("meta", {"name" : "pandoc"}))
+        ebook_meta = soup.find("meta", {"name" : "ebook-meta"})
+        if ebook_meta:
+            yml = {"ebook-meta": ebook_meta.attrs["content"]}
         if not arg.metadata:
             meta = ""
             for m in soup.findAll("meta", {"name" : re.compile(r"^dc\.", re.IGNORECASE)}):
@@ -227,7 +242,7 @@ if arg.html:
                     arg.css = os.path.realpath(arg.css)
         if arg.css and arg.copy_class:
             with open(arg.css, "r") as c:
-                class_names = class_name.findall(c.read())
+                class_names = [c.rstrip(",") for c in class_name.findall(c.read())]
                 if len(class_names):
                     class_names = "." + ", .".join(class_names)
                     clases = soup.select(class_names)
@@ -341,6 +356,7 @@ if arg.notas:
                 xnota = os.path.basename(html)
                 break
 
+fixNotas = {}
 for html in xhtml:
     chml = os.path.basename(html)
     with open(html, "r+") as f:
@@ -381,10 +397,19 @@ for html in xhtml:
                     if len(a.previous_sibling.string) > 0 and len(a.previous_sibling.strip()) == 0:
                         a.previous_sibling.extract()
                     count = count + 1
+            else:
+                for a in soup.findAll("a", attrs={'class': "footnoteRef"}):
+                    if a['href'].startswith("#"):
+                        a['href'] = xnota + a['href']
+                        fixNotas[a['id']]=chml
         else:
             div = soup.find("div")
             for n in notas:
                 div.append(n)
+            for _id, xml in fixNotas.items():
+                a = div.find("a", attrs={"href": "#"+_id})
+                if a:
+                    a.attrs["href"] = xml + a.attrs["href"]
 
         for c in clases:
             fnd = soup.find(lambda t: t.name == c.name and sp.sub(" ",t.get_text()).strip() == sp.sub(" ",c.get_text()).strip() )
@@ -437,8 +462,9 @@ if yml:
         metadata.extend(["--tags", tags])
     if yml.get("category", False):
         metadata.extend(["--category", yml.get("category")])
+    if "ebook-meta" in yml:
+        metadata.extend(str_to_cmd(yml["ebook-meta"]))
     if len(metadata)>0:
-        print (str(metadata))
         check_output(["ebook-meta"] + metadata + [arg.out])
 
 print ("Epub final de " + sizeof_fmt(os.path.getsize(arg.out)))
