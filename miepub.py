@@ -41,6 +41,8 @@ parser.add_argument("--width", type=int, help="Ancho máximo para las imágenes"
 parser.add_argument("--notas", help="Nombre del capítulo donde se quieren generar las notas (por defecto se usara el último capítulo)")
 parser.add_argument(
     "--execute", help="Ejecuta script sobre el epub antes de empaquetarlo")
+parser.add_argument("--keep-title", help="Mantiene la página de título",
+    action='store_true', default=False)
 parser.add_argument("fuente", help="Fichero de entrada")
 
 arg = parser.parse_args()
@@ -48,7 +50,11 @@ arg = parser.parse_args()
 sp = re.compile(r"\s+", re.MULTILINE | re.UNICODE)
 class_name = re.compile(r"\.(\S+)")
 tipo_fuente = re.compile(r"^(.*)\.(md|html)$")
-no_content = re.compile(
+if arg.keep_title:
+    no_content = re.compile(
+    r'<item id="nav" |<itemref idref="nav" |href="nav.xhtml')
+else:
+    no_content = re.compile(
     r'<item id="nav" |<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml" |<itemref idref="nav" |href="nav.xhtml')
 
 if not os.path.isfile(arg.fuente):
@@ -132,7 +138,7 @@ def descargar(url, dwn):
         call(["wget", url, "--quiet", "-O", dwn])
 
 def simplifica(s):
-    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii', 'ignore')    
+    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii', 'ignore')
 
 def optimizar(s):
     antes = os.path.getsize(s)
@@ -273,7 +279,7 @@ if arg.html and '--parse-raw' not in extra_args:
     extra_args.append('--parse-raw')
 if arg.chapter_level and '--epub-chapter-level' not in extra_args:
     extra_args.extend(['--epub-chapter-level', arg.chapter_level])
-    
+
 
 print ("Convirtiendo con pandoc")
 pypandoc.convert_file(arg.fuente,
@@ -290,7 +296,21 @@ with zipfile.ZipFile(arg.out, 'r') as zip_ref:
 
 print ("Eliminando navegación inecesaria")
 os.remove(tmp_out + "/nav.xhtml")
-os.remove(tmp_out + "/title_page.xhtml")
+if arg.keep_title:
+    with open(tmp_out + "/title_page.xhtml", "r") as f:
+        tt_soup = bs4.BeautifulSoup(f, "xml")
+    n_body = tt_soup.new_tag("body")
+    o_body = tt_soup.find("body")
+    for a in o_body.attrs:
+        n_body[a]=o_body.attrs[a]
+    o_body.name="div"
+    o_body.attrs.clear()
+    o_body.attrs["class"]="title_page"
+    o_body.wrap(n_body)
+    with open(tmp_out + "/title_page.xhtml", "w") as f:
+        f.write(str(o_body))
+else:
+    os.remove(tmp_out + "/title_page.xhtml")
 
 with open(tmp_out + "/content.opf", "r+") as f:
     d = [l for l in f.readlines() if not no_content.search(l)]
