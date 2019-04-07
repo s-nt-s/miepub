@@ -308,7 +308,7 @@ if arg.keep_title:
     o_body.attrs["class"]="title_page"
     o_body.wrap(n_body)
     with open(tmp_out + "/title_page.xhtml", "w") as f:
-        f.write(str(o_body))
+        f.write(str(tt_soup))
 else:
     os.remove(tmp_out + "/title_page.xhtml")
 
