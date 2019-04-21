@@ -31,6 +31,7 @@ parser.add_argument("--cover", help="Imagen de portada")  # --epub-cover-image
 parser.add_argument("--metadata", help="Metadatos del epub")  # --epub-metadata
 parser.add_argument("--css", help="Estilos del epub")  # --epub-stylesheet
 parser.add_argument("--chapter-level", help="Nivel de divisón de capitulos") # --epub-chapter-level
+parser.add_argument("--txt-cover", help="Crea una portada basada en un texto")
 parser.add_argument("--gray", help="Convertir imagenes a blanco y negro",
                     action='store_true', default=False)
 parser.add_argument("--trim", help="Recorta los margenes de las imagenes",
@@ -206,7 +207,7 @@ os.mkdir(tmp_wks)
 
 clases = []
 extra_args = []
-yml = None
+yml = {}
 
 if arg.md:
     yml = get_yaml(arg.fuente)
@@ -218,7 +219,10 @@ if arg.html:
         extra_arguments(soup.find("meta", {"name" : "pandoc"}))
         ebook_meta = soup.find("meta", {"name" : "ebook-meta"})
         if ebook_meta:
-            yml = {"ebook-meta": ebook_meta.attrs["content"]}
+            yml["ebook-meta"]=ebook_meta.attrs["content"]
+        txt_cover = soup.find("meta", {"name" : "txt_cover"})
+        if txt_cover:
+            yml["txt-cover"]=txt_cover.attrs["content"]
         if not arg.metadata:
             meta = ""
             for m in soup.findAll("meta", {"name" : re.compile(r"^dc\.", re.IGNORECASE)}):
@@ -253,6 +257,13 @@ if arg.html:
                     class_names = "." + ", .".join(class_names)
                     clases = soup.select(class_names)
 
+if "txt-cover" in yml:
+    arg.txt_cover = yml['txt-cover']
+
+if arg.txt_cover:
+    print ("Creando portada '%s'" % arg.txt_cover)
+    arg.cover = tmp_in + "/cover.png"
+    call(["convert", "-monochrome", "-gravity", "Center", "-interline-spacing", "40", "-background", "White", "-fill", "Black", "-size", "560x760", "caption:%s" % arg.txt_cover, "-bordercolor", "White", "-border", "20x20", arg.cover])
 
 if arg.cover and arg.cover.startswith("http"):
     print ("Descargando portada de " + arg.cover)
