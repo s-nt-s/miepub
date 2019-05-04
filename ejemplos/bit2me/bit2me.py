@@ -1,26 +1,31 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
-import requests
-import bs4
 import re
-from limpiar import Limpiar, vacio, heads
+
+import bs4
+import requests
 from bunch import Bunch
+
+from limpiar import Limpiar, heads, vacio
 
 sp = re.compile(r"\s+")
 
-ban_imgs = [i.strip() for i in open("imgs.txt").readlines() if len(i.strip())>0 ]
+ban_imgs = [i.strip()
+            for i in open("imgs.txt").readlines() if len(i.strip()) > 0]
 
-idc=0
-ids={}
+idc = 0
+ids = {}
+
 
 def get(url):
     r = requests.get(url)
     return bs4.BeautifulSoup(r.content, "lxml")
 
+
 def append(body, li, nivel):
     global idc
     global ids
-    
+
     a = li.find("a")
     h = out.new_tag("h"+str(nivel))
     h.string = a.get_text()
@@ -31,14 +36,15 @@ def append(body, li, nivel):
     body.append(h)
     url = a.attrs["href"]
     ids[url] = h
-    
+
     if url != "#":
         soup = get(url)
         div = soup.find("div", attrs={"class": "entry-content"})
         div.attrs.clear()
-        div.name="article"
-        div = lmp.check_heads(nodo=div, inicio=2)#nivel)
+        div.name = "article"
+        div = lmp.check_heads(nodo=div, inicio=2)  # nivel)
         body.append(div)
+
 
 def sibling(n):
     a = n.previous_sibling
@@ -48,6 +54,7 @@ def sibling(n):
     while b and not isinstance(b, bs4.Tag):
         b = b.next_sibling
     return (a, b)
+
 
 soup = get("http://blog.bit2me.com/es/guia-bitcoin/")
 
@@ -68,13 +75,14 @@ out = bs4.BeautifulSoup('''
     <body>
     </body>
 </html>
-''' , 'lxml')
+''', 'lxml')
 
-lmp = Limpiar(out, noscript=True, iframe_to_anchor=True, resolve_images=True, clear_attr=heads + ["p", "figure", "ul", "ol", "img", "a"])
+lmp = Limpiar(out, noscript=True, iframe_to_anchor=True, resolve_images=True,
+              clear_attr=heads + ["p", "figure", "ul", "ol", "img", "a"])
 
 body = out.body
 
-libro=[]
+libro = []
 
 lis = soup.select("aside ul.menu > li")[1:]
 for li in lis:
@@ -114,8 +122,8 @@ for hr in out.findAll("hr"):
 for i in out.findAll("img"):
     if i.attrs["src"] in ban_imgs:
         p = i.parent
-        t = sp.sub("",p.get_text()).strip()
-        if p.name == "figure" or (p.name=="p" and len(t)==0):
+        t = sp.sub("", p.get_text()).strip()
+        if p.name == "figure" or (p.name == "p" and len(t) == 0):
             p.extract()
         else:
             i.extract()
@@ -138,15 +146,15 @@ for a in out.findAll("a"):
         a.attrs["href"] = "#" + h.attrs["id"]
         a.insert(0, " ")
         span = out.new_tag("span")
-        span.attrs["class"]="mark"
-        span.string = "[" + i +"]"
+        span.attrs["class"] = "mark"
+        span.string = "[" + i + "]"
         a.insert(0, span)
 
 lmp.load(out)
 lmp.limpiar()
 out = lmp.soup
 
-imgs=[]
+imgs = []
 for i in out.findAll("img"):
     src = i.attrs["src"]
     alt = i.attrs.get("alt", src.split("/")[-1])
@@ -166,14 +174,15 @@ for h in out.findAll(heads):
         h.unwrap()
     else:
         a, b = sibling(h)
-        if b and b.name.startswith("h") and int(b.name[1])<=int(h.name[1]):
-            h.name="p"
+        if b and b.name.startswith("h") and int(b.name[1]) <= int(h.name[1]):
+            h.name = "p"
 
 lmp.load(out)
 lmp.limpiar()
 
 html = lmp.html
-html = re.sub(r"Explorador (de )?blockchain a fondo: ", "blockchain.info: ", html)
+html = re.sub(r"Explorador (de )?blockchain a fondo: ",
+              "blockchain.info: ", html)
 
 with open("bit2me.html", "w") as file:
     file.write(html)

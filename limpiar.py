@@ -1,9 +1,10 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import re
-import bs4
-from urllib.parse import urlparse
 from os.path import splitext
+from urllib.parse import urlparse
+
+import bs4
 
 tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong', 'b']
 tag_round = ['u', 'i', 'em', 'span', 'strong', 'a', 'b']
@@ -17,9 +18,10 @@ heads = ["h1", "h2", "h3", "h4", "h5", "h6"]
 block = heads + ["p", "div", "table", "article"]
 inline = ["span", "strong", "b", "del", "i", "em"]
 
-attrs_imp = ["src", "href", "id", "class", "colspan", "rowspan", "alt" ]
+attrs_imp = ["src", "href", "id", "class", "colspan", "rowspan", "alt"]
 
 urls = ["#", "javascript:void(0)"]
+
 
 def load(html):
     if isinstance(html, bs4.Tag):
@@ -35,9 +37,11 @@ def load(html):
             soup = bs4.BeautifulSoup(f.read(), 'lxml')
     return soup, str(soup), origen
 
+
 def vacio(n):
     txt = sp.sub("", n.get_text().strip())
-    return len(txt)==0
+    return len(txt) == 0
+
 
 def version_de(src1, src2):
     if src1 == src2:
@@ -47,8 +51,7 @@ def version_de(src1, src2):
     rut1, ext1 = src1.rsplit('.', 1)
     rut2, ext2 = src2.rsplit('.', 1)
     return ext1 == ext2 and rut1.startswith(rut2)
-    
-    
+
 
 class Limpiar:
 
@@ -82,21 +85,23 @@ class Limpiar:
                 is_youtube = re_youtube.match(src)
                 if is_scribd:
                     busca_href = is_scribd.group(1)
-                    busca_href = busca_href.replace("/embeds/","/(doc|embeds)/")
+                    busca_href = busca_href.replace(
+                        "/embeds/", "/(doc|embeds)/")
                     busca_href = re.compile("^"+busca_href+"(/.*)?$")
-                    src = src.replace("/embeds/","/doc/")
+                    src = src.replace("/embeds/", "/doc/")
                 elif is_youtube:
                     busca_href = is_youtube.group(1)
                     src = "https://www.youtube.com/watch?v=" + busca_href
-                    busca_href = re.compile("^https?://www.youtube.com/.*\b"+busca_href+"\b.*$")
+                    busca_href = re.compile(
+                        "^https?://www.youtube.com/.*\b"+busca_href+"\b.*$")
                 if self.soup.findAll("a", attrs={'href': busca_href}):
                     i.extract()
                 else:
-                    i.name="a"
+                    i.name = "a"
                     i.attrs.clear()
                     i.attrs["href"] = src
                     i.attrs["target"] = "_blank"
-                    i.string=src
+                    i.string = src
         if self.resolve_images:
             for img in self.soup.select("a > img"):
                 a = img.parent
@@ -109,12 +114,13 @@ class Limpiar:
                         img.attrs["src"] = href
                         a.unwrap()
                     else:
-                        srcset = img.attrs.get("srcset", "").split(", ")[-1].split(" ")[0].strip()
-                        if len(srcset)>0:
+                        srcset = img.attrs.get("srcset", "").split(
+                            ", ")[-1].split(" ")[0].strip()
+                        if len(srcset) > 0:
                             img.attrs["src"] = srcset
             for f in self.soup.findAll(["figure", "p", "li"]):
                 imgs = f.findAll("img")
-                if len(imgs)>1:
+                if len(imgs) > 1:
                     srcs = set([i.attrs["src"] for i in imgs])
                     for src in srcs:
                         visto = []
@@ -123,13 +129,13 @@ class Limpiar:
                             if s in visto or version_de(s, src):
                                 i.extract()
                             visto.append(s)
-                        
+
         for i in self.soup.findAll(block):
             if vacio(i) and not i.find("img") and not i.find("iframe"):
                 i.extract()
         for i in self.soup.findAll(heads):
             if vacio(i):
-                i.name="p"
+                i.name = "p"
         for i in self.soup.findAll(inline):
             if vacio(i):
                 i.unwrap()
@@ -142,7 +148,7 @@ class Limpiar:
                     i.unwrap()
         for n in self.clear_attr:
             for i in self.soup.findAll(n):
-                attrs = {a : i.attrs[a] for a in attrs_imp if a in i.attrs}
+                attrs = {a: i.attrs[a] for a in attrs_imp if a in i.attrs}
                 i.attrs.clear()
                 i.attrs = attrs
         for n in self.soup.findAll():
@@ -158,8 +164,8 @@ class Limpiar:
     def check_heads(self, inicio=0, nodo=None):
         if not nodo:
             nodo = self.soup
-        hs=[]
-        for i in range(1,7):
+        hs = []
+        for i in range(1, 7):
             h = nodo.findAll("h"+str(i))
             if len(h):
                 hs.append(h)
@@ -211,4 +217,3 @@ class Limpiar:
             self.html = r.sub(r"\1", self.html)
 
         self.soup = bs4.BeautifulSoup(self.html, 'lxml')
-        

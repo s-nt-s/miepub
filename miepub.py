@@ -1,26 +1,24 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import zipfile
-import bs4
-import tempfile
-import os
-import glob
-import shutil
-import pypandoc
 import argparse
+import filecmp
+import glob
+import os
 import re
 import shutil
-import urllib.request
-import pypandoc
-import zipfile
-import unicodedata
-import filecmp
-import htmlmin
-from subprocess import call, check_output
-from PIL import Image
 import sys
+import tempfile
+import unicodedata
+import urllib.request
+import zipfile
+from subprocess import call, check_output
+
+import bs4
+import htmlmin
+import pypandoc
 import yaml
+from PIL import Image
 
 parser = argparse.ArgumentParser(
     description='Genera epub')
@@ -30,7 +28,8 @@ parser.add_argument("--toc", type=int,
 parser.add_argument("--cover", help="Imagen de portada")  # --epub-cover-image
 parser.add_argument("--metadata", help="Metadatos del epub")  # --epub-metadata
 parser.add_argument("--css", help="Estilos del epub")  # --epub-stylesheet
-parser.add_argument("--chapter-level", help="Nivel de divisón de capitulos") # --epub-chapter-level
+# --epub-chapter-level
+parser.add_argument("--chapter-level", help="Nivel de divisón de capitulos")
 parser.add_argument("--txt-cover", help="Crea una portada basada en un texto")
 parser.add_argument("--gray", help="Convertir imagenes a blanco y negro",
                     action='store_true', default=False)
@@ -39,11 +38,12 @@ parser.add_argument("--trim", help="Recorta los margenes de las imagenes",
 parser.add_argument("--copy-class", help="Copiar el atributo class de la fuente al epub",
                     action='store_true', default=False)
 parser.add_argument("--width", type=int, help="Ancho máximo para las imágenes")
-parser.add_argument("--notas", help="Nombre del capítulo donde se quieren generar las notas (por defecto se usara el último capítulo)")
+parser.add_argument(
+    "--notas", help="Nombre del capítulo donde se quieren generar las notas (por defecto se usara el último capítulo)")
 parser.add_argument(
     "--execute", help="Ejecuta script sobre el epub antes de empaquetarlo")
 parser.add_argument("--keep-title", help="Mantiene la página de título",
-    action='store_true', default=False)
+                    action='store_true', default=False)
 parser.add_argument("fuente", help="Fichero de entrada")
 
 arg = parser.parse_args()
@@ -53,10 +53,10 @@ class_name = re.compile(r"\.(\S+)")
 tipo_fuente = re.compile(r"^(.*)\.(md|html)$")
 if arg.keep_title:
     no_content = re.compile(
-    r'<item id="nav" |<itemref idref="nav" |href="nav.xhtml')
+        r'<item id="nav" |<itemref idref="nav" |href="nav.xhtml')
 else:
     no_content = re.compile(
-    r'<item id="nav" |<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml" |<itemref idref="nav" |href="nav.xhtml')
+        r'<item id="nav" |<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml" |<itemref idref="nav" |href="nav.xhtml')
 
 if not os.path.isfile(arg.fuente):
     sys.exit(arg.fuente + " no existe")
@@ -92,12 +92,14 @@ tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
 tag_trim = ['li', 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
 tag_right = ['p']
 
+
 def sizeof_fmt(num, suffix='B'):
     for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
         if abs(num) < 1024.0:
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f %s%s" % (num, 'Y', suffix)
+
 
 def minify_soup(soup):
     h = htmlmin.minify(str(soup), remove_empty_space=True)
@@ -138,8 +140,10 @@ def descargar(url, dwn):
     except:
         call(["wget", url, "--quiet", "-O", dwn])
 
+
 def simplifica(s):
     return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii', 'ignore')
+
 
 def optimizar(s):
     antes = os.path.getsize(s)
@@ -153,8 +157,9 @@ def optimizar(s):
     if antes > despues:
         shutil.move(c, s)
 
+
 def get_yaml(md):
-    with open(md,"r") as f:
+    with open(md, "r") as f:
         itr = iter(f)
         if next(itr) != '---\n':
             return {}
@@ -165,37 +170,40 @@ def get_yaml(md):
             yml += line
     return {}
 
+
 def extra_arguments(extra):
     if not extra:
         return
     if isinstance(extra, bs4.Tag):
         extra = extra.attrs["content"]
     extra = sp.sub(" ", extra).strip()
-    if len(extra)==0:
+    if len(extra) == 0:
         return
-    print ("Argumentos extra: "+extra)
+    print("Argumentos extra: "+extra)
     extra = extra.split(" ")
     if '--copy-class' in extra:
         arg.copy_class = True
         extra.remove('--copy-class')
     extra_args.extend(extra)
 
+
 def str_to_cmd(s):
-    arr=[]
-    flag=True
+    arr = []
+    flag = True
     for i in s.split('"'):
         flag = not flag
         if flag:
             arr.append(i)
             continue
-        i=i.strip()
+        i = i.strip()
         for c in i.split():
             arr.append(c)
     return arr
 
+
 tmp = tempfile.mkdtemp(prefix=prefix)
 
-print ("Directorio de trabajo: " + tmp)
+print("Directorio de trabajo: " + tmp)
 
 tmp_in = tmp + "/in"
 tmp_out = tmp + "/out"
@@ -216,29 +224,29 @@ if arg.md:
 if arg.html:
     with open(arg.fuente, "rb") as f:
         soup = bs4.BeautifulSoup(f, "lxml")
-        extra_arguments(soup.find("meta", {"name" : "pandoc"}))
-        ebook_meta = soup.find("meta", {"name" : "ebook-meta"})
+        extra_arguments(soup.find("meta", {"name": "pandoc"}))
+        ebook_meta = soup.find("meta", {"name": "ebook-meta"})
         if ebook_meta:
-            yml["ebook-meta"]=ebook_meta.attrs["content"]
-        txt_cover = soup.find("meta", {"name" : "txt_cover"})
+            yml["ebook-meta"] = ebook_meta.attrs["content"]
+        txt_cover = soup.find("meta", {"name": "txt_cover"})
         if txt_cover:
-            yml["txt-cover"]=txt_cover.attrs["content"]
+            yml["txt-cover"] = txt_cover.attrs["content"]
         if not arg.metadata:
             meta = ""
-            for m in soup.findAll("meta", {"name" : re.compile(r"^dc\.", re.IGNORECASE)}):
+            for m in soup.findAll("meta", {"name": re.compile(r"^dc\.", re.IGNORECASE)}):
                 n = m.attrs["name"].lower()
                 c = m.attrs["content"]
                 n = "dc:" + n[3:]
                 meta += "<%s>%s</%s>\n" % (n, c, n)
             if len(meta) > 0:
-                print ("Recuperados metadatos del html")
+                print("Recuperados metadatos del html")
                 arg.metadata = tmp_in + "/metadata.xml"
                 with open(arg.metadata, "w") as file:
                     file.write(meta)
         if not arg.cover:
             c = soup.find("meta", attrs={'property': "og:image"})
             if c and "content" in c.attrs:
-                print ("Recuperada portada de los metadatos del html")
+                print("Recuperada portada de los metadatos del html")
                 arg.cover = c.attrs["content"]
         if not arg.css:
             c = soup.find("link", attrs={'media': "print"})
@@ -247,12 +255,13 @@ if arg.html:
                 if not arg.css.startswith("http") and not os.path.isfile(arg.css):
                     dir_fuente = os.path.dirname(arg.fuente)
                     if not arg.css.startswith("/"):
-                        dir_fuente = dir_fuente +"/"
-                    arg.css =  dir_fuente + arg.css
+                        dir_fuente = dir_fuente + "/"
+                    arg.css = dir_fuente + arg.css
                     arg.css = os.path.realpath(arg.css)
         if arg.css and arg.copy_class:
             with open(arg.css, "r") as c:
-                class_names = [c.rstrip(",") for c in class_name.findall(c.read())]
+                class_names = [c.rstrip(",")
+                               for c in class_name.findall(c.read())]
                 if len(class_names):
                     class_names = "." + ", .".join(class_names)
                     clases = soup.select(class_names)
@@ -261,19 +270,20 @@ if "txt-cover" in yml:
     arg.txt_cover = yml['txt-cover']
 
 if arg.txt_cover:
-    print ("Creando portada '%s'" % arg.txt_cover)
+    print("Creando portada '%s'" % arg.txt_cover)
     arg.cover = tmp_in + "/cover.png"
-    call(["convert", "-monochrome", "-gravity", "Center", "-interline-spacing", "40", "-background", "White", "-fill", "Black", "-size", "560x760", "caption:%s" % arg.txt_cover, "-bordercolor", "White", "-border", "20x20", arg.cover])
+    call(["convert", "-monochrome", "-gravity", "Center", "-interline-spacing", "40", "-background", "White", "-fill",
+          "Black", "-size", "560x760", "caption:%s" % arg.txt_cover, "-bordercolor", "White", "-border", "20x20", arg.cover])
 
 if arg.cover and arg.cover.startswith("http"):
-    print ("Descargando portada de " + arg.cover)
+    print("Descargando portada de " + arg.cover)
     _, extension = os.path.splitext(arg.cover)
     dwn = tmp_in + "/cover" + extension
     descargar(arg.cover, dwn)
     arg.cover = dwn
 
 if arg.css and arg.css.startswith("http"):
-    print ("Descargando css de " + arg.css)
+    print("Descargando css de " + arg.css)
     dwn = tmp_in + "/" + os.path.basename(arg.css)
     descargar(arg.cover, dwn)
     arg.css = dwn
@@ -284,7 +294,7 @@ if arg.cover and '--epub-cover-image' not in extra_args:
     extra_args.extend(['--epub-cover-image', arg.cover])
 if arg.metadata and '--epub-metadata' not in extra_args:
     extra_args.extend(['--epub-metadata', arg.metadata])
-if arg.css and  '--epub-stylesheet' not in extra_args:
+if arg.css and '--epub-stylesheet' not in extra_args:
     extra_args.extend(['--epub-stylesheet', arg.css])
 if arg.html and '--parse-raw' not in extra_args:
     extra_args.append('--parse-raw')
@@ -292,20 +302,20 @@ if arg.chapter_level and '--epub-chapter-level' not in extra_args:
     extra_args.extend(['--epub-chapter-level', arg.chapter_level])
 
 
-print ("Convirtiendo con pandoc")
+print("Convirtiendo con pandoc")
 pypandoc.convert_file(arg.fuente,
                       outputfile=arg.out,
                       to="epub",
                       extra_args=extra_args)
 
-print ("Epub inicial de " + sizeof_fmt(os.path.getsize(arg.out)))
+print("Epub inicial de " + sizeof_fmt(os.path.getsize(arg.out)))
 
-print ("Descomprimiendo epub")
+print("Descomprimiendo epub")
 with zipfile.ZipFile(arg.out, 'r') as zip_ref:
     zip_ref.extractall(tmp_out)
     zip_ref.close()
 
-print ("Eliminando navegación inecesaria")
+print("Eliminando navegación inecesaria")
 os.remove(tmp_out + "/nav.xhtml")
 if arg.keep_title:
     with open(tmp_out + "/title_page.xhtml", "r") as f:
@@ -313,10 +323,10 @@ if arg.keep_title:
     n_body = tt_soup.new_tag("body")
     o_body = tt_soup.find("body")
     for a in o_body.attrs:
-        n_body[a]=o_body.attrs[a]
-    o_body.name="div"
+        n_body[a] = o_body.attrs[a]
+    o_body.name = "div"
     o_body.attrs.clear()
-    o_body.attrs["class"]="title_page"
+    o_body.attrs["class"] = "title_page"
     o_body.wrap(n_body)
     with open(tmp_out + "/title_page.xhtml", "w") as f:
         f.write(str(tt_soup))
@@ -372,7 +382,7 @@ if imgdup:
         f.seek(0)
         f.write("".join(d))
         f.truncate()
-    print ("Eliminadas imagenes duplicadas")
+    print("Eliminadas imagenes duplicadas")
 
 xhtml = sorted(glob.glob(tmp_out + "/ch*.xhtml"))
 notas = []
@@ -383,7 +393,7 @@ if arg.notas:
     for html in xhtml:
         with open(html, "r+") as f:
             soup = bs4.BeautifulSoup(f, "xml")
-            if soup.find("h1",text=arg.notas):
+            if soup.find("h1", text=arg.notas):
                 xnota = os.path.basename(html)
                 break
 
@@ -432,7 +442,7 @@ for html in xhtml:
                 for a in soup.findAll("a", attrs={'class': "footnoteRef"}):
                     if a['href'].startswith("#"):
                         a['href'] = xnota + a['href']
-                        fixNotas[a['id']]=chml
+                        fixNotas[a['id']] = chml
         else:
             div = soup.find("div")
             for n in notas:
@@ -443,7 +453,8 @@ for html in xhtml:
                     a.attrs["href"] = xml + a.attrs["href"]
 
         for c in clases:
-            fnd = soup.find(lambda t: t.name == c.name and sp.sub(" ",t.get_text()).strip() == sp.sub(" ",c.get_text()).strip() )
+            fnd = soup.find(lambda t: t.name == c.name and sp.sub(
+                " ", t.get_text()).strip() == sp.sub(" ", c.get_text()).strip())
             if fnd and "class" not in fnd.attrs:
                 fnd.attrs["class"] = c.attrs["class"]
 
@@ -451,7 +462,7 @@ for html in xhtml:
             for c in soup.findAll("cite"):
                 p = c.parent
                 q = p.parent
-                if q.name == "blockquote"  and p.name == "p" and sp.sub(" ",p.get_text()).strip() == sp.sub(" ",c.get_text()).strip():
+                if q.name == "blockquote" and p.name == "p" and sp.sub(" ", p.get_text()).strip() == sp.sub(" ", c.get_text()).strip():
                     p.attrs["class"] = "cite"
                     q.attrs["class"] = "cite"
 
@@ -461,23 +472,24 @@ for html in xhtml:
         f.truncate()
 
 if arg.gray or arg.width or arg.trim and len(imgs) > 0:
-    print ("Limpiando imagenes")
+    print("Limpiando imagenes")
     antes = sum(map(os.path.getsize, imgs))
     call(["exiftool", "-r", "-overwrite_original", "-q", "-all=", media])
     despu = sum(map(os.path.getsize, imgs))
-    print ("Ahorrado borrando exif: " + sizeof_fmt(antes - despu))
+    print("Ahorrado borrando exif: " + sizeof_fmt(antes - despu))
     imgs = sorted(imgs)
     for img in imgs:
         optimizar(img)
     despu = despu - sum([os.path.getsize(s) for s in imgs])
     if despu > 0:
-        print ("Ahorrado optimizando: " + sizeof_fmt(despu))
+        print("Ahorrado optimizando: " + sizeof_fmt(despu))
 
 if arg.execute:
     call([arg.execute, tmp_out, arg.fuente])
 
 with zipfile.ZipFile(arg.out, "w") as zip_file:
-    zip_file.write(tmp_out + '/mimetype', 'mimetype', compress_type=zipfile.ZIP_STORED)
+    zip_file.write(tmp_out + '/mimetype', 'mimetype',
+                   compress_type=zipfile.ZIP_STORED)
     z = len(tmp_out) + 1
     for root, dirs, files in os.walk(tmp_out):
         for f in files:
@@ -488,14 +500,14 @@ with zipfile.ZipFile(arg.out, "w") as zip_file:
 
 if yml:
     metadata = []
-    if len(yml.get("tags", []))>0:
+    if len(yml.get("tags", [])) > 0:
         tags = "," .join(yml.get("tags"))
         metadata.extend(["--tags", tags])
     if yml.get("category", False):
         metadata.extend(["--category", yml.get("category")])
     if "ebook-meta" in yml:
         metadata.extend(str_to_cmd(yml["ebook-meta"]))
-    if len(metadata)>0:
+    if len(metadata) > 0:
         check_output(["ebook-meta"] + metadata + [arg.out])
 
-print ("Epub final de " + sizeof_fmt(os.path.getsize(arg.out)))
+print("Epub final de " + sizeof_fmt(os.path.getsize(arg.out)))
