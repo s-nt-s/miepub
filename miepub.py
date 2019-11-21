@@ -102,7 +102,7 @@ def sizeof_fmt(num, suffix='B'):
 
 
 def minify_soup(soup):
-    h = htmlmin.minify(str(soup), remove_empty_space=True)
+    h = str(soup) # htmlmin.minify(str(soup), remove_empty_space=True)
     for t in tag_concat:
         r = re.compile(
             "</" + t + ">(\s*)<" + t + ">", re.MULTILINE | re.DOTALL | re.UNICODE)
@@ -142,7 +142,14 @@ def descargar(url, dwn):
 
 
 def simplifica(s):
-    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii', 'ignore')
+    s = unicodedata.normalize('NFKD', s)
+    s = s.encode('ascii', 'ignore')
+    s = s.decode('ascii', 'ignore')
+    s = s.strip(".")
+    s = s.strip()
+    s = s.strip(".")
+    s = s.strip()
+    return s
 
 
 def optimizar(s):
@@ -303,6 +310,7 @@ if arg.chapter_level and '--epub-chapter-level' not in extra_args:
 
 
 print("Convirtiendo con pandoc")
+#print("pandoc "+arg.fuente+" "+ " ".join(str(i) for i in extra_args)+" -o ")
 pypandoc.convert_file(arg.fuente,
                       outputfile=arg.out,
                       to="epub",
@@ -397,6 +405,22 @@ if arg.notas:
                 xnota = os.path.basename(html)
                 break
 
+
+if os.path.isfile(tmp_out + "/nav.xhtml"):
+    with open(tmp_out + "/nav.xhtml", "r+") as f:
+        soup = bs4.BeautifulSoup(f, "xml")
+        for a in soup.findAll("a"):
+            href=a.attrs.get("href")
+            if a and "#" in href:
+                href, antes = href.rsplit("#", 1)
+                despues = simplifica(antes)
+                if despues and antes!=despues:
+                    a.attrs["href"] = href + "#" + despues
+        minified = minify_soup(soup)
+        f.seek(0)
+        f.write(minified)
+        f.truncate()
+
 fixNotas = {}
 for html in xhtml:
     chml = os.path.basename(html)
@@ -405,6 +429,11 @@ for html in xhtml:
         for c in soup.select("div"):
             if "id" in c.attrs and c.attrs["id"] in marcas:
                 c.attrs["id"] = marcas[c.attrs["id"]]
+        for ids in soup.select("*[id]"):
+            antes = ids.attrs["id"]
+            despues = simplifica(antes)
+            if despues and antes!=despues:
+                ids.attrs["id"] = despues
         for p in soup.select("table p") + soup.select("figure p"):
             p.unwrap()
         for i in soup.select("img"):
@@ -457,6 +486,13 @@ for html in xhtml:
                 " ", t.get_text()).strip() == sp.sub(" ", c.get_text()).strip())
             if fnd and "class" not in fnd.attrs:
                 fnd.attrs["class"] = c.attrs["class"]
+
+        for img in soup.findAll("img"):
+            if "alt" not in img.attrs:
+                img.attrs["alt"]=""
+
+        for n in soup.findAll("article"):
+            n.name = "div"
 
         if arg.md:
             for c in soup.findAll("cite"):
