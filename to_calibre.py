@@ -69,7 +69,8 @@ if r:
 cmd = shlex.split(config.add)
 print("Añadiendo "+config.path)
 ids = []
-for f in config.files:
+for i, f in enumerate(config.files):
+    i = i + 1
     id = run(*(cmd+[f]))
     id = re_nb.findall(id)
     ids.append(id[0])
@@ -91,6 +92,10 @@ if config.serie:
         cmd.append(id)
         run(*cmd)
         cmd = ('calibredb set_metadata --field title:"'+config.serie+'"') % i
+        cmd = shlex.split(cmd)
+        cmd.append(id)
+        run(*cmd)
+        cmd = ('calibredb set_metadata --field title_sort:"'+config.serie+'"') % i
         cmd = shlex.split(cmd)
         cmd.append(id)
         run(*cmd)
