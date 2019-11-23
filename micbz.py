@@ -118,6 +118,7 @@ mogrify = ["-strip", "+repage", "-bordercolor", "None", "-fuzz", "30%", "-trim",
 tmp = "/tmp/micbz" #tempfile.mkdtemp()
 print("cd " + tmp)
 for i, cbr in enumerate(arg.origen):
+    print(os.path.basename(cbr))
     if os.path.isdir(tmp):
         shutil.rmtree(tmp)
     os.makedirs(tmp)
