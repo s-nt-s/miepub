@@ -52,6 +52,12 @@ def _extract(fl, target):
     return False
 
 def extract(fl, target):
+    if os.path.isdir(fl):
+        os.makedirs(target, exist_ok=True)
+        target = target + '/' + os.path.basename(fl)
+        print(fl, "->", target)
+        shutil.copytree(fl, target)
+        return target
     if not _extract(fl, target):
         return False
     while True:
@@ -87,7 +93,7 @@ def get_files(target):
 def call_mogrify(fl, *arg):
     call(["mogrify"] + list(arg) + [fl])
 
-parser = argparse.ArgumentParser(description='Obtimiza cbr/cbz')
+parser = argparse.ArgumentParser(description='Optimiza cbr/cbz')
 parser.add_argument("--out", type=str, help="Directorio de sálida", default=".")
 parser.add_argument("--width", type=int, help="Ancho máximo", default=1072)
 parser.add_argument("--height", type=int, help="Alto máximo", default=1448)
@@ -98,9 +104,14 @@ arg = parser.parse_args()
 
 if not os.path.isdir(arg.out):
     sys.exit(arg.out+" no es un directorio")
+    if not arg.out.endswith("/"):
+        out = out + "/"
 
 origen=[]
 for f in arg.origen:
+    if os.path.isdir(f):
+        origen.append(f.rstrip("/"))
+        continue
     if not os.path.isfile(f):
         sys.exit(f+" no es un fichero")
     ext = f.split(".")[-1].lower()
