@@ -442,6 +442,7 @@ for html in xhtml:
         if chml != xnota:
             footnotes = soup.find("div", attrs={'class': "footnotes"})
             if footnotes:
+                bak_count = count
                 for p in footnotes.findAll("p"):
                     a = p.select("a")[-1]
                     if a['href'].startswith("#"):
@@ -455,7 +456,9 @@ for html in xhtml:
                     a.insert_before(" ")
                     a.string = "<<"
                     notas.append(p)
+                    count = count + 1
                 footnotes.extract()
+                count = bak_count
                 for a in soup.findAll("a", attrs={'class': "footnoteRef"}):
                     a['href'] = xnota + "#fn" + str(count)
                     sup = a.find("sup")
