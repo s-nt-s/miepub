@@ -173,7 +173,7 @@ def get_yaml(md):
         yml = ""
         for line in itr:
             if line == '---\n':
-                return yaml.load(yml.rstrip())
+                return yaml.load(yml.rstrip(), Loader=yaml.FullLoader)
             yml += line
     return {}
 
