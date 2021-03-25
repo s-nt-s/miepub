@@ -4,5 +4,5 @@ htmlmin==0.1.12
 lxml==4.6.2
 Pillow==8.1.1
 pypandoc==1.4
-PyYAML==5.1
+PyYAML==5.4
 requests==2.20.0
