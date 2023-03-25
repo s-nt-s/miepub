@@ -13,6 +13,7 @@ import unicodedata
 import urllib.request
 import zipfile
 from subprocess import call, check_output
+from shutil import copy
 
 import bs4
 import htmlmin
@@ -318,6 +319,8 @@ pypandoc.convert_file(arg.fuente,
 
 print("Epub inicial de " + sizeof_fmt(os.path.getsize(arg.out)))
 
+copy(arg.out, tmp)
+
 print("Descomprimiendo epub")
 with zipfile.ZipFile(arg.out, 'r') as zip_ref:
     zip_ref.extractall(tmp_out)
@@ -467,6 +470,8 @@ for html in xhtml:
                         a.string = ""
                         a.append(sup)
                     sup.string = "[" + str(count) + "]"
+                    if a.previous_sibling is None:
+                        raise Exception(str(a)+" previous_sibling = None")
                     if len(a.previous_sibling.string) > 0 and len(a.previous_sibling.strip()) == 0:
                         a.previous_sibling.extract()
                     count = count + 1
