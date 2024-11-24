@@ -16,10 +16,8 @@ from subprocess import call, check_output
 from shutil import copy
 
 import bs4
-import htmlmin
 import pypandoc
 import yaml
-from PIL import Image
 
 parser = argparse.ArgumentParser(
     description='Genera epub')
@@ -49,7 +47,7 @@ parser.add_argument("fuente", help="Fichero de entrada")
 
 arg = parser.parse_args()
 
-sp = re.compile(r"\s+", re.MULTILINE | re.UNICODE)
+re_sp = re.compile(r"\s+", re.MULTILINE | re.UNICODE)
 class_name = re.compile(r"\.(\S+)")
 tipo_fuente = re.compile(r"^(.*)\.(md|html)$")
 if arg.keep_title:
@@ -92,6 +90,15 @@ tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
 tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
 tag_trim = ['li', 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
 tag_right = ['p']
+
+
+def get_text(n: bs4.Tag):
+    if n is None:
+        return None
+    txt = re_sp.sub(" ", n.get_text()).strip()
+    if len(txt) == 0:
+        return None
+    return txt
 
 
 def sizeof_fmt(num, suffix='B'):
@@ -184,7 +191,7 @@ def extra_arguments(extra):
         return
     if isinstance(extra, bs4.Tag):
         extra = extra.attrs["content"]
-    extra = sp.sub(" ", extra).strip()
+    extra = re_sp.sub(" ", extra).strip()
     if len(extra) == 0:
         return
     print("Argumentos extra: "+extra)
@@ -490,8 +497,8 @@ for html in xhtml:
                     a.attrs["href"] = xml + a.attrs["href"]
 
         for c in clases:
-            fnd = soup.find(lambda t: t.name == c.name and sp.sub(
-                " ", t.get_text()).strip() == sp.sub(" ", c.get_text()).strip())
+            fnd = soup.find(lambda t: t.name == c.name and re_sp.sub(
+                " ", t.get_text()).strip() == re_sp.sub(" ", c.get_text()).strip())
             if fnd and "class" not in fnd.attrs:
                 fnd.attrs["class"] = c.attrs["class"]
 
@@ -503,10 +510,42 @@ for html in xhtml:
             n.name = "div"
 
         if arg.md:
+            for tr in soup.select("tr"):
+                if "class" in tr:
+                    del tr.attrs["class"]
+                colspan = 0
+                td: bs4.Tag
+                for td in tr.findAll(["td", "th"]):
+                    if get_text(td) == ">":
+                        colspan = colspan + 1
+                        td.extract()
+                    elif colspan > 0:
+                        td.attrs["colspan"] = str(colspan+1)
+                        td.attrs["style"] = "text-align: center;"
+                        colspan = 0
+            for td in soup.findAll(["td", "th"]):
+                b = td.select_one("strong")
+                if b and get_text(b) == get_text(td):
+                    b.unwrap()
+                    td.name = "th"
+            for tbody in soup.select("tbody"):
+                for tr in tbody.select("tr"):
+                    if any(map(get_text, tr.select("td"))):
+                        continue
+                    thead = tbody.find_previous_sibling('thead')
+                    if thead is None:
+                        thead = soup.new_tag('thead')
+                        tbody.insert_before(thead)
+                    for td in tr.select("td"):
+                        td.name = "th"
+                    thead.append(tr)
+            for tbody in soup.findAll(["thead", "tbody"]):
+                for i, tr in enumerate(tbody.select("tr")):
+                    tr.attrs["class"] = "odd" if (i % 2)==0 else "even"
             for c in soup.findAll("cite"):
                 p = c.parent
                 q = p.parent
-                if q.name == "blockquote" and p.name == "p" and sp.sub(" ", p.get_text()).strip() == sp.sub(" ", c.get_text()).strip():
+                if q.name == "blockquote" and p.name == "p" and re_sp.sub(" ", p.get_text()).strip() == re_sp.sub(" ", c.get_text()).strip():
                     p.attrs["class"] = "cite"
                     q.attrs["class"] = "cite"
 
