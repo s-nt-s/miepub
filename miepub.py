@@ -344,9 +344,11 @@ else:
     os.remove(tmp_out + "/title_page.xhtml")
 
 with open(tmp_out + "/content.opf", "r+") as f:
-    d = [l for l in f.readlines() if not no_content.search(l)]
+    d = "".join(l for l in f.readlines() if not no_content.search(l))
+    if isinstance(yml.get('date'), int):
+        d = re.sub(r"<dc:date>[^<]+</dc:date>", f"<dc:date>{yml['date']}</dc:date>", d)
     f.seek(0)
-    f.write("".join(d))
+    f.write(d)
     f.truncate()
 
 marcas = {}
