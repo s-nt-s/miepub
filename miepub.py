@@ -88,8 +88,7 @@ if arg.width:
 
 tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
 tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
-tag_trim = ['li', 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
-tag_right = ['p']
+tab_block = ['p', 'li', "tr", "thead", "tbody", 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
 
 
 def get_text(n: bs4.Tag):
@@ -110,35 +109,28 @@ def sizeof_fmt(num, suffix='B'):
 
 
 def minify_soup(soup):
+    def __re(rg: str):
+        return re.compile(rg, re.MULTILINE | re.DOTALL | re.UNICODE)
+
     h = str(soup) # htmlmin.minify(str(soup), remove_empty_space=True)
+
     for t in tag_concat:
-        r = re.compile(
-            "</" + t + ">(\s*)<" + t + ">", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\1", h)
+        r = __re(r"</" + t + r">(\s*)<" + t + ">")
+        h = r.sub(r"\1", h)
     for t in tag_round:
-        r = re.compile(
-            "(<" + t + ">)(\s+)", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\2\\1", h)
-        r = re.compile(
-            "(<" + t + " [^>]+>)(\s+)", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\2\\1", h)
-        r = re.compile(
-            "(\s+)(</" + t + ">)", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\2\\1", h)
-    for t in tag_trim:
-        r = re.compile(
-            "(<" + t + ">)\s+", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\1", h)
-        r = re.compile(
-            "\s+(</" + t + ">)", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\1", h)
-    for t in tag_right:
-        r = re.compile(
-            "\s+(</" + t + ">)", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\1", h)
-        r = re.compile(
-            "(<" + t + ">) +", re.MULTILINE | re.DOTALL | re.UNICODE)
-        h = r.sub("\\1", h)
+        for r in (
+            __re(r"(<" + t + r">)(\s+)"),
+            __re(r"(<" + t + r" [^>]+>)(\s+)"),
+            __re(r"(\s+)(</" + t + r">)")
+        ):
+            h = r.sub(r"\2\1", h)
+    for t in tab_block:
+        for r in (
+            __re(r"\s*(<" + t + r">)\s*"),
+            __re(r"\s*(<" + t + r" [^>]+>)\s*"),
+        ):
+            h = r.sub(r"\n\1", h)
+        h = __re(r"\s*(</" + t + r">)\s*").sub(r"\1\n", h)
     return h
 
 
@@ -529,11 +521,20 @@ for html in xhtml:
                     b.unwrap()
                     td.name = "th"
             for tbody in soup.select("tbody"):
-                for tr in tbody.select("tr"):
+                trs = list(tbody.select("tr"))
+                for i, tr in enumerate(trs):
                     if any(map(get_text, tr.select("td"))):
                         continue
-                    thead = tbody.find_previous_sibling('thead')
-                    if thead is None:
+                    if tr != tbody.find("tr"):
+                        tbd = soup.new_tag('tbody')
+                        tbody.insert_after(tbd)
+                        for _tr in trs[i:]:
+                            tbd.append(_tr)
+                    tbody: bs4.Tag = tr.find_parent("tbody")
+                    thead = tbody.find_previous_sibling()
+                    while not (thead and isinstance(thead, bs4.Tag)):
+                        thead = thead.find_previous_sibling()
+                    if thead is None or thead.name != "thead":
                         thead = soup.new_tag('thead')
                         tbody.insert_before(thead)
                     for td in tr.select("td"):
@@ -541,7 +542,7 @@ for html in xhtml:
                     thead.append(tr)
             for tbody in soup.findAll(["thead", "tbody"]):
                 for i, tr in enumerate(tbody.select("tr")):
-                    tr.attrs["class"] = "odd" if (i % 2)==0 else "even"
+                    tr.attrs["class"] = "odd" if (i % 2) == 0 else "even"
             for c in soup.findAll("cite"):
                 p = c.parent
                 q = p.parent
