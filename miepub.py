@@ -365,8 +365,9 @@ with open(tmp_out + "/toc.ncx", "r+") as f:
             despues = despues.split("#", 1)[-1]
             antes = antes.split("#", 1)[-1]
             marcas[antes] = despues
+    content = re.sub(r' xmlns:="', ' xmlns="', str(soup))
     f.seek(0)
-    f.write(str(soup))
+    f.write(content)
     f.truncate()
 
 media = tmp_out + "/media/"
@@ -524,24 +525,26 @@ for html in xhtml:
                     td.name = "th"
             for tbody in soup.select("tbody"):
                 trs = list(tbody.select("tr"))
+                last_tr_th = None
+                first_tr_td = None
+                tr_to_th = []
                 for i, tr in enumerate(trs):
                     if any(map(get_text, tr.select("td"))):
+                        if first_tr_td is None:
+                            first_tr_td = i
                         continue
-                    if tr != tbody.find("tr"):
-                        tbd = soup.new_tag('tbody')
-                        tbody.insert_after(tbd)
-                        for _tr in trs[i:]:
-                            tbd.append(_tr)
-                    tbody: bs4.Tag = tr.find_parent("tbody")
-                    thead = tbody.find_previous_sibling()
-                    while not (thead and isinstance(thead, bs4.Tag)):
-                        thead = thead.find_previous_sibling()
-                    if thead is None or thead.name != "thead":
-                        thead = soup.new_tag('thead')
-                        tbody.insert_before(thead)
+                    last_tr_th = i
                     for td in tr.select("td"):
                         td.name = "th"
-                    thead.append(tr)
+                    tr_to_th.append(tr)
+                if None not in (first_tr_td, last_tr_th) and last_tr_th < first_tr_td:
+                    table = tbody.find_parent("table")
+                    for tr in tr_to_th:
+                        thead = table.select_one("thead")
+                        if thead is None:
+                            thead = soup.new_tag('thead')
+                            table.insert(0, thead)
+                        thead.append(tr)
             for tbody in soup.findAll(["thead", "tbody"]):
                 for i, tr in enumerate(tbody.select("tr")):
                     tr.attrs["class"] = "odd" if (i % 2) == 0 else "even"
@@ -553,6 +556,7 @@ for html in xhtml:
                     q.attrs["class"] = "cite"
 
         minified = minify_soup(soup)
+        minified = re.sub(r'<html xmlns:="', '<html xmlns="', minified)
         f.seek(0)
         f.write(minified)
         f.truncate()
