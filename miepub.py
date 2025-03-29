@@ -28,11 +28,11 @@ parser.add_argument("--cover", help="Imagen de portada")  # --epub-cover-image
 parser.add_argument("--metadata", help="Metadatos del epub")  # --epub-metadata
 parser.add_argument("--css", help="Estilos del epub")  # --epub-stylesheet
 # --epub-chapter-level
-parser.add_argument("--chapter-level", help="Nivel de divisón de capitulos")
+parser.add_argument("--chapter-level", help="Nivel de división de capítulos")
 parser.add_argument("--txt-cover", help="Crea una portada basada en un texto")
-parser.add_argument("--gray", help="Convertir imagenes a blanco y negro",
+parser.add_argument("--gray", help="Convertir imágenes a blanco y negro",
                     action='store_true', default=False)
-parser.add_argument("--trim", help="Recorta los margenes de las imagenes",
+parser.add_argument("--trim", help="Recorta los margenes de las imágenes",
                     action='store_true', default=False)
 parser.add_argument("--copy-class", help="Copiar el atributo class de la fuente al epub",
                     action='store_true', default=False)
@@ -51,11 +51,10 @@ re_sp = re.compile(r"\s+", re.MULTILINE | re.UNICODE)
 class_name = re.compile(r"\.(\S+)")
 tipo_fuente = re.compile(r"^(.*)\.(md|html)$")
 if arg.keep_title:
-    no_content = re.compile(
-        r'<item id="nav" |<itemref idref="nav" |href="nav.xhtml')
+    no_content = None
 else:
     no_content = re.compile(
-        r'<item id="nav" |<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml" |<itemref idref="nav" |href="nav.xhtml')
+        r'<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml"')
 
 if not os.path.isfile(arg.fuente):
     sys.exit(arg.fuente + " no existe")
@@ -108,7 +107,7 @@ def sizeof_fmt(num, suffix='B'):
     return "%.1f %s%s" % (num, 'Y', suffix)
 
 
-def minify_soup(soup):
+def minify_soup(soup: bs4.Tag):
     def __re(rg: str):
         return re.compile(rg, re.MULTILINE | re.DOTALL | re.UNICODE)
 
@@ -272,7 +271,6 @@ if arg.html:
                 if len(class_names):
                     class_names = "." + ", .".join(class_names)
                     clases = soup.select(class_names)
-
 if "txt-cover" in yml:
     arg.txt_cover = yml['txt-cover']
 
@@ -301,16 +299,16 @@ if arg.cover and '--epub-cover-image' not in extra_args:
     extra_args.extend(['--epub-cover-image', arg.cover])
 if arg.metadata and '--epub-metadata' not in extra_args:
     extra_args.extend(['--epub-metadata', arg.metadata])
-if arg.css and '--epub-stylesheet' not in extra_args:
-    extra_args.extend(['--epub-stylesheet', arg.css])
+if arg.css and '--css' not in extra_args:
+    extra_args.extend(['--css', arg.css])
 if arg.html and '--parse-raw' not in extra_args:
     extra_args.append('--parse-raw')
-if arg.chapter_level and '--epub-chapter-level' not in extra_args:
-    extra_args.extend(['--epub-chapter-level', arg.chapter_level])
+if arg.chapter_level and '--split-level' not in extra_args:
+    extra_args.extend(['--split-level', arg.chapter_level])
 
 
 print("Convirtiendo con pandoc")
-#print("pandoc "+arg.fuente+" "+ " ".join(str(i) for i in extra_args)+" -o ")
+print(f"pandoc '{arg.fuente}'", *map(str, extra_args), f" -o '{arg.out}'")
 pypandoc.convert_file(arg.fuente,
                       outputfile=arg.out,
                       to="epub",
@@ -325,10 +323,10 @@ with zipfile.ZipFile(arg.out, 'r') as zip_ref:
     zip_ref.extractall(tmp_out)
     zip_ref.close()
 
-print("Eliminando navegación inecesaria")
-os.remove(tmp_out + "/nav.xhtml")
+print("Eliminando navegación innecesaria")
+#os.remove(tmp_out + "/EPUB/nav.xhtml")
 if arg.keep_title:
-    with open(tmp_out + "/title_page.xhtml", "r") as f:
+    with open(tmp_out + "/EPUB/text/title_page.xhtml", "r") as f:
         tt_soup = bs4.BeautifulSoup(f, "xml")
     n_body = tt_soup.new_tag("body")
     o_body = tt_soup.find("body")
@@ -338,13 +336,13 @@ if arg.keep_title:
     o_body.attrs.clear()
     o_body.attrs["class"] = "title_page"
     o_body.wrap(n_body)
-    with open(tmp_out + "/title_page.xhtml", "w") as f:
+    with open(tmp_out + "/EPUB/text/title_page.xhtml", "w") as f:
         f.write(str(tt_soup))
 else:
-    os.remove(tmp_out + "/title_page.xhtml")
+    os.remove(tmp_out + "/EPUB/text/title_page.xhtml")
 
-with open(tmp_out + "/content.opf", "r+") as f:
-    d = "".join(l for l in f.readlines() if not no_content.search(l))
+with open(tmp_out + "/EPUB/content.opf", "r+") as f:
+    d = "".join(ln for ln in f.readlines() if not (no_content is not None and no_content.search(ln)) and ln.strip() != "<dc:source></dc:source>")
     if isinstance(yml.get('date'), int):
         d = re.sub(r"<dc:date>[^<]+</dc:date>", f"<dc:date>{yml['date']}</dc:date>", d)
     f.seek(0)
@@ -353,7 +351,7 @@ with open(tmp_out + "/content.opf", "r+") as f:
 
 marcas = {}
 
-with open(tmp_out + "/toc.ncx", "r+") as f:
+with open(tmp_out + "/EPUB/toc.ncx", "r+") as f:
     soup = bs4.BeautifulSoup(f, "xml")
     nav = soup.find("navMap")
     nav.find("navPoint").extract()
@@ -370,7 +368,7 @@ with open(tmp_out + "/toc.ncx", "r+") as f:
     f.write(content)
     f.truncate()
 
-media = tmp_out + "/media/"
+media = tmp_out + "/EPUB/media/"
 imgs = []
 for g in ['*.jpeg', '*.jpg', '*.png']:
     imgs.extend(glob.glob(media + g))
@@ -390,14 +388,14 @@ while i < len(imgs) - 1:
 if imgdup:
     re_keys = [re.escape(k) for k in imgdup.keys()]
     re_imgdup = re.compile("href=\"(" + "|".join(re_keys) + ")\"")
-    with open(tmp_out + "/content.opf", "r+") as f:
+    with open(tmp_out + "/EPUB/content.opf", "r+") as f:
         d = [l for l in f.readlines() if not re_imgdup.search(l)]
         f.seek(0)
         f.write("".join(d))
         f.truncate()
-    print("Eliminadas imagenes duplicadas")
+    print("Eliminadas imágenes duplicadas")
 
-xhtml = sorted(glob.glob(tmp_out + "/ch*.xhtml"))
+xhtml = sorted(glob.glob(tmp_out + "/EPUB/text/ch*.xhtml"))
 notas = []
 xnota = os.path.basename(xhtml[-1])
 count = 1
@@ -411,17 +409,21 @@ if arg.notas:
                 break
 
 
-if os.path.isfile(tmp_out + "/nav.xhtml"):
-    with open(tmp_out + "/nav.xhtml", "r+") as f:
+if os.path.isfile(tmp_out + "/EPUB/nav.xhtml"):
+    with open(tmp_out + "/EPUB/nav.xhtml", "r+") as f:
         soup = bs4.BeautifulSoup(f, "xml")
-        for a in soup.findAll("a"):
-            href=a.attrs.get("href")
+        for a in soup.select("a"):
+            href: str = a.attrs.get("href")
+            if href == "text/title_page.xhtml" and not arg.keep_title:
+                a.find_parent("li").extract()
+                continue
             if a and "#" in href:
                 href, antes = href.rsplit("#", 1)
                 despues = simplifica(antes)
-                if despues and antes!=despues:
+                if despues and antes != despues:
                     a.attrs["href"] = href + "#" + despues
         minified = minify_soup(soup)
+        minified = re.sub(r' xmlns:="', ' xmlns="', minified)
         f.seek(0)
         f.write(minified)
         f.truncate()
@@ -437,34 +439,45 @@ for html in xhtml:
         for ids in soup.select("*[id]"):
             antes = ids.attrs["id"]
             despues = simplifica(antes)
-            if despues and antes!=despues:
+            if despues and antes != despues:
                 ids.attrs["id"] = despues
         for p in soup.select("table p") + soup.select("figure p"):
             p.unwrap()
         for i in soup.select("img"):
             if "src" in i.attrs and i.attrs["src"] in imgdup:
                 i.attrs["src"] = imgdup[i.attrs["src"]]
-        if chml != xnota:
-            footnotes = soup.find("div", attrs={'class': "footnotes"})
+        if chml == xnota:
+            div = soup.select_one("section")
+            for n in notas:
+                div.append(n)
+            for _id, xml in fixNotas.items():
+                a = div.find("a", attrs={"href": "#"+_id})
+                if a:
+                    a.attrs["href"] = xml + a.attrs["href"]
+        else:
+            footnotes = soup.select_one("section.footnotes")
             if footnotes:
                 bak_count = count
-                for p in footnotes.findAll("p"):
-                    a = p.select("a")[-1]
+                for p in footnotes.select("p"):
+                    a = p.select_one("a.footnote-back")
                     if a['href'].startswith("#"):
                         a['href'] = chml + a['href']
                     p['id'] = "fn" + str(count)
+                    a['class'] = "volver"
+                    a.string = "<<"
+                    p.append(a)
+                    a.insert_before(" ")
+                    first_text = p.find(text=True)
+                    first_text.replace_with(re.sub(r"^[\s\.]+", "", first_text.string))
                     sup = soup.new_tag("sup")
                     sup.string = "[" + str(count) + "]"
                     p.insert(0, sup)
                     p.insert(1, " ")
-                    a['class'] = "volver"
-                    a.insert_before(" ")
-                    a.string = "<<"
                     notas.append(p)
                     count = count + 1
                 footnotes.extract()
                 count = bak_count
-                for a in soup.findAll("a", attrs={'class': "footnoteRef"}):
+                for a in soup.select("a.footnote-ref"):
                     a['href'] = xnota + "#fn" + str(count)
                     sup = a.find("sup")
                     if not sup:
@@ -478,18 +491,10 @@ for html in xhtml:
                         a.previous_sibling.extract()
                     count = count + 1
             else:
-                for a in soup.findAll("a", attrs={'class': "footnoteRef"}):
+                for a in soup.select("a.footnote-ref"):
                     if a['href'].startswith("#"):
                         a['href'] = xnota + a['href']
                         fixNotas[a['id']] = chml
-        else:
-            div = soup.find("div")
-            for n in notas:
-                div.append(n)
-            for _id, xml in fixNotas.items():
-                a = div.find("a", attrs={"href": "#"+_id})
-                if a:
-                    a.attrs["href"] = xml + a.attrs["href"]
 
         for c in clases:
             fnd = soup.find(lambda t: t.name == c.name and re_sp.sub(
@@ -501,7 +506,7 @@ for html in xhtml:
             if "alt" not in img.attrs:
                 img.attrs["alt"]=""
 
-        for n in soup.findAll("article"):
+        for n in soup.select("article"):
             n.name = "div"
 
         if arg.md:
@@ -545,10 +550,10 @@ for html in xhtml:
                             thead = soup.new_tag('thead')
                             table.insert(0, thead)
                         thead.append(tr)
-            for tbody in soup.findAll(["thead", "tbody"]):
+            for tbody in soup.select("thead, tbody"):
                 for i, tr in enumerate(tbody.select("tr")):
                     tr.attrs["class"] = "odd" if (i % 2) == 0 else "even"
-            for c in soup.findAll("cite"):
+            for c in soup.select("cite"):
                 p = c.parent
                 q = p.parent
                 if q.name == "blockquote" and p.name == "p" and re_sp.sub(" ", p.get_text()).strip() == re_sp.sub(" ", c.get_text()).strip():
@@ -556,7 +561,7 @@ for html in xhtml:
                     q.attrs["class"] = "cite"
 
         minified = minify_soup(soup)
-        minified = re.sub(r'<html xmlns:="', '<html xmlns="', minified)
+        minified = re.sub(r' xmlns:="', ' xmlns="', minified)
         f.seek(0)
         f.write(minified)
         f.truncate()
@@ -601,3 +606,5 @@ if yml:
         check_output(["ebook-meta"] + metadata + [arg.out])
 
 print("Epub final de " + sizeof_fmt(os.path.getsize(arg.out)))
+
+call(["epubcheck", arg.out])
