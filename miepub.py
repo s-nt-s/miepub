@@ -30,6 +30,7 @@ parser.add_argument("--css", help="Estilos del epub")  # --epub-stylesheet
 # --epub-chapter-level
 parser.add_argument("--chapter-level", help="Nivel de división de capítulos")
 parser.add_argument("--txt-cover", help="Crea una portada basada en un texto")
+parser.add_argument("--extract", help="Selector de tags a extraer (es decir, borrar)")
 parser.add_argument("--gray", help="Convertir imágenes a blanco y negro",
                     action='store_true', default=False)
 parser.add_argument("--trim", help="Recorta los margenes de las imágenes",
@@ -88,6 +89,17 @@ if arg.width:
 tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
 tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
 tab_block = ['p', 'li', "tr", "thead", "tbody", 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
+
+
+def add_class(n: bs4.Tag, cls: str):
+    c = n.attrs.get('class')
+    if c is None or isinstance(c, str):
+        n.attrs['class'] = ((c or '')+' '+cls).strip()
+        return
+    if isinstance(c, list):
+        c = [x.strip() for x in c if x.strip()]
+        n.attrs['class'] = c
+    raise ValueError(f"{c} is {type(c)}")
 
 
 def get_text(n: bs4.Tag):
@@ -433,6 +445,9 @@ for html in xhtml:
     chml = os.path.basename(html)
     with open(html, "r+") as f:
         soup = bs4.BeautifulSoup(f, "xml")
+        if arg.extract:
+            for n in soup.select(arg.extract):
+                n.extract()
         for c in soup.select("div"):
             if "id" in c.attrs and c.attrs["id"] in marcas:
                 c.attrs["id"] = marcas[c.attrs["id"]]
@@ -560,6 +575,13 @@ for html in xhtml:
                     p.attrs["class"] = "cite"
                     q.attrs["class"] = "cite"
 
+        for img in soup.select("a > img"):
+            a = img.find_parent("a")
+            if get_text(a) is not None:
+                continue
+            chls = a.select(":scope *")
+            if len(chls) == 1 and chls[0] == img:
+                add_class(a, "pandoc_a_img")
         minified = minify_soup(soup)
         minified = re.sub(r' xmlns:="', ' xmlns="', minified)
         f.seek(0)
