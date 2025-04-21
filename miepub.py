@@ -14,6 +14,10 @@ import urllib.request
 import zipfile
 from subprocess import call, check_output
 from shutil import copy
+from datetime import date, datetime
+
+from PIL import Image, ImageDraw, ImageFont
+import textwrap
 
 import bs4
 import pypandoc
@@ -89,6 +93,70 @@ if arg.width:
 tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
 tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
 tab_block = ['p', 'li', "tr", "thead", "tbody", 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
+
+
+def generate_cover(title: str, author: str = None, date_text: str = None, output_path="cover.png"):
+    if isinstance(date_text, (date, datetime)):
+        date_text = date_text.strftime("%Y")
+    if isinstance(date_text, int):
+        date_text = str(date_text)
+
+    width, height = 1600, 2560
+    bg_color = 255  # blanco en modo 'L'
+    fg_color = 0    # negro en modo 'L'
+
+    image = Image.new("L", (width, height), color=bg_color)
+    draw = ImageDraw.Draw(image)
+
+    # Fuentes con tamaños grandes
+    title_font = ImageFont.truetype("arial.ttf", 120)
+    author_font = ImageFont.truetype("arial.ttf", 80)
+    date_font = ImageFont.truetype("arial.ttf", 60)
+
+    # Marco
+    margin = 80
+    draw.rectangle(
+        [margin, margin, width - margin, height - margin],
+        outline=fg_color,
+        width=6
+    )
+
+    # Línea decorativa horizontal bajo el título
+    line_width = 6
+    line_length = width // 3
+    line_y_spacing = 60
+
+    # Título (centrado y envuelto)
+    wrapped_title = textwrap.fill(title, width=20)
+    title_size = draw.multiline_textsize(wrapped_title, font=title_font)
+    title_x = (width - title_size[0]) / 2
+    title_y = height * 0.25
+    draw.multiline_text((title_x, title_y), wrapped_title, fill=fg_color, font=title_font, align="center")
+
+    # Línea decorativa
+    line_x1 = (width - line_length) / 2
+    line_x2 = line_x1 + line_length
+    line_y = title_y + title_size[1] + line_y_spacing
+    draw.line([(line_x1, line_y), (line_x2, line_y)], fill=fg_color, width=line_width)
+
+    # Autor
+    if author:
+        author_text = f"{author}"
+        author_size = draw.textsize(author_text, font=author_font)
+        author_x = (width - author_size[0]) / 2
+        author_y = line_y + line_y_spacing * 1.5
+        draw.text((author_x, author_y), author_text, fill=fg_color, font=author_font)
+
+    # Fecha
+    if date_text:
+        date_size = draw.textsize(date_text, font=date_font)
+        date_x = (width - date_size[0]) / 2
+        date_y = height * 0.88
+        draw.text((date_x, date_y), date_text, fill=fg_color, font=date_font)
+
+    image.save(output_path)
+    return output_path
+
 
 
 def add_class(n: bs4.Tag, cls: str):
@@ -288,9 +356,7 @@ if "txt-cover" in yml:
 
 if arg.txt_cover:
     print("Creando portada '%s'" % arg.txt_cover)
-    arg.cover = tmp_in + "/cover.png"
-    call(["convert", "-monochrome", "-gravity", "Center", "-interline-spacing", "40", "-background", "White", "-fill",
-          "Black", "-size", "560x760", "caption:%s" % arg.txt_cover, "-bordercolor", "White", "-border", "20x20", arg.cover])
+    arg.cover = generate_cover(arg.txt_cover, None, None, output_path=tmp_in + "/cover.png")
 
 if arg.cover and arg.cover.startswith("http"):
     print("Descargando portada de " + arg.cover)
@@ -298,6 +364,16 @@ if arg.cover and arg.cover.startswith("http"):
     dwn = tmp_in + "/cover" + extension
     descargar(arg.cover, dwn)
     arg.cover = dwn
+if arg.cover is None and yml.get('title') and yml.get('cover-image') is None:
+    print("Creando portada desde metadatos")
+    author = yml.get('author') or yml.get('creator')
+    if isinstance(author, list):
+        author = [a['text'] for a in author if a['role'] == 'author']
+        if len(author) == 0:
+            author = None
+        else:
+            author = ", ".join(author)
+    arg.cover = generate_cover(yml['title'], author, yml.get('cover-date') or yml.get('date'), output_path=tmp_in + "/cover.png")
 
 if arg.css and arg.css.startswith("http"):
     print("Descargando css de " + arg.css)
