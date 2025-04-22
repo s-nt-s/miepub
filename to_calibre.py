@@ -12,10 +12,12 @@ import shlex
 
 re_nb = re.compile(r"\d+")
 
+
 def run(*cmd):
     output = check_output(cmd)
     output = output.decode(sys.stdout.encoding)
     return output
+
 
 def get(search, to_list=False):
     try:
@@ -25,6 +27,7 @@ def get(search, to_list=False):
         return r
     except:
         return None
+
 
 parser = argparse.ArgumentParser(description="Añade archivos a Calibre")
 parser.add_argument("config", nargs='?', help="Fichero Yaml de configuración")

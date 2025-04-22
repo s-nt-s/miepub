@@ -101,19 +101,17 @@ def generate_cover(title: str, author: str = None, date_text: str = None, output
     if isinstance(date_text, int):
         date_text = str(date_text)
 
-    width, height = 1600, 2560
+    width, height = 1072, 1448
     bg_color = 255  # blanco en modo 'L'
     fg_color = 0    # negro en modo 'L'
 
     image = Image.new("L", (width, height), color=bg_color)
     draw = ImageDraw.Draw(image)
 
-    # Fuentes con tamaños grandes
-    title_font = ImageFont.truetype("arial.ttf", 120)
-    author_font = ImageFont.truetype("arial.ttf", 80)
-    date_font = ImageFont.truetype("arial.ttf", 60)
+    title_font = ImageFont.truetype("arial.ttf", 90)
+    author_font = ImageFont.truetype("arial.ttf", 60)
+    date_font = ImageFont.truetype("arial.ttf", 48)
 
-    # Marco
     margin = 80
     draw.rectangle(
         [margin, margin, width - margin, height - margin],
@@ -156,7 +154,6 @@ def generate_cover(title: str, author: str = None, date_text: str = None, output
 
     image.save(output_path)
     return output_path
-
 
 
 def add_class(n: bs4.Tag, cls: str):

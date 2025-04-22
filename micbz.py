@@ -32,10 +32,12 @@ Gunnm-*_006.jpg
 *.txt
 '''.strip())
 
+
 def rm_ban_files(target):
     for glb in ban_file:
         for f in iglob(target+"/**/"+glb, recursive=True):
             os.remove(f)
+
 
 def _extract(fl, target):
     ext = fl.split(".")[-1].lower()
@@ -50,6 +52,7 @@ def _extract(fl, target):
             rar_ref.close()
         return True
     return False
+
 
 def extract(fl, target):
     if os.path.isdir(fl):
@@ -69,6 +72,7 @@ def extract(fl, target):
             return target
         target=fls
     return target
+
 
 def build(tmp_out, target):
     target = target+".cbz"
@@ -90,8 +94,10 @@ def get_files(target):
         for file in f:
             yield os.path.join(r, file), file.lower()
 
+
 def call_mogrify(fl, *arg):
     call(["mogrify"] + list(arg) + [fl])
+
 
 parser = argparse.ArgumentParser(description='Optimiza cbr/cbz')
 parser.add_argument("--out", type=str, help="Directorio de sálida", default=".")
@@ -105,7 +111,7 @@ arg = parser.parse_args()
 if not os.path.isdir(arg.out):
     sys.exit(arg.out+" no es un directorio")
     if not arg.out.endswith("/"):
-        out = out + "/"
+        arg.out = arg.out + "/"
 
 origen=[]
 for f in arg.origen:
