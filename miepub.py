@@ -15,6 +15,8 @@ import zipfile
 from subprocess import call, check_output
 from shutil import copy
 from datetime import date, datetime
+from functools import cached_property
+from typing import Union, NamedTuple, List, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
@@ -50,45 +52,322 @@ parser.add_argument("--keep-title", help="Mantiene la página de título",
                     action='store_true', default=False)
 parser.add_argument("fuente", help="Fichero de entrada")
 
-arg = parser.parse_args()
-
 re_sp = re.compile(r"\s+", re.MULTILINE | re.UNICODE)
-class_name = re.compile(r"\.(\S+)")
-tipo_fuente = re.compile(r"^(.*)\.(md|html)$")
-if arg.keep_title:
-    no_content = None
-else:
-    no_content = re.compile(
-        r'<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml"')
-
-if not os.path.isfile(arg.fuente):
-    sys.exit(arg.fuente + " no existe")
-if not tipo_fuente.match(arg.fuente):
-    sys.exit(arg.fuente + " no tiene la extensión adecuada (.md o .html)")
-if arg.execute and (not os.path.isfile(arg.execute) or not os.access(arg.execute, os.X_OK)):
-    sys.exit(arg.execute + " no es un programa ejecutable")
 
 
-arg.html = arg.fuente.endswith(".html")
-arg.md = arg.fuente.endswith(".md")
-arg.fuente = os.path.realpath(arg.fuente)
-arg.dir_fuente = os.path.dirname(arg.fuente)
+class MyDir(NamedTuple):
+    root: str
+    wks: str
+    source: str
+    out: str
 
-if arg.out:
-    arg.out = os.path.realpath(arg.out)
-else:
-    arg.out = tipo_fuente.sub(r"\1.epub", arg.fuente)
 
-prefix = os.path.basename(tipo_fuente.sub(
-    r"\1", arg.fuente)).replace(" ", "_") + "_"
+class MetaData:
+    def __init__(self, arg: argparse.Namespace):
+        self.__arg = arg
+        if not os.path.isfile(self.fuente):
+            sys.exit(self.fuente + " no existe")
+        if self.ext not in ("md", "html"):
+            sys.exit(self.fuente + " no tiene la extensión adecuada (.md o .html)")
+        if self.execute and (not os.path.isfile(self.execute) or not os.access(self.execute, os.X_OK)):
+            sys.exit(self.execute + " no es un programa ejecutable")
 
-mogrify = ["mogrify"]
-if arg.trim:
-    mogrify.extend(["-strip", "+repage", "-fuzz", "600", "-trim"])
-if arg.gray:
-    mogrify.extend(["-colorspace", "GRAY"])
-if arg.width:
-    mogrify.extend(["-resize", str(arg.width) + ">"])
+    @cached_property
+    def tmp(self):
+        tmp = tempfile.mkdtemp(prefix=self.prefix)
+        print("Directorio de trabajo: " + tmp)
+        tmp_in = tmp + "/in"
+        tmp_out = tmp + "/out"
+        tmp_wks = tmp + "/wks"
+        os.mkdir(tmp_in)
+        os.mkdir(tmp_out)
+        os.mkdir(tmp_wks)
+        return MyDir(
+            root=tmp,
+            wks=tmp_wks,
+            source=tmp_in,
+            out=tmp_out,
+        )
+
+    @cached_property
+    def ext(self):
+        return self.fuente.rsplit(".", 1)[-1].lower()
+
+    @cached_property
+    def filename(self):
+        return self.fuente.rsplit(".", 1)[0]
+
+    @cached_property
+    def dir_fuente(self):
+        return os.path.dirname(self.fuente)
+
+    @cached_property
+    def out(self):
+        if self.__arg.out:
+            return os.path.realpath(self.__arg.out)
+        return self.filename + ".epub"
+
+    @property
+    def keep_title(self) -> bool:
+        return self.__arg.keep_title
+
+    @cached_property
+    def fuente(self) -> str:
+        return os.path.realpath(self.__arg.fuente)
+
+    @property
+    def execute(self) -> str:
+        return self.__arg.execute
+
+    @cached_property
+    def re_no_content(self):
+        if self.keep_title:
+            return None
+        return re.compile(r'<item id="title_page" |<item id="title_page_xhtml" |<itemref idref="title_page" |<itemref idref="title_page_xhtml"')
+
+    @cached_property
+    def isHtml(self):
+        return self.fuente.endswith(".html")
+
+    @cached_property
+    def isMd(self):
+        return self.fuente.endswith(".md")
+
+    @cached_property
+    def prefix(self):
+        return os.path.basename(self.filename).replace(" ", "_") + "_"
+
+    @property
+    def trim(self) -> bool:
+        return self.__arg.trim
+
+    @property
+    def gray(self) -> bool:
+        return self.__arg.gray
+
+    @property
+    def width(self) -> int:
+        return self.__arg.width
+
+    @cached_property
+    def mogrify(self):
+        mogrify = ["mogrify"]
+        if self.trim:
+            mogrify.extend(["-strip", "+repage", "-fuzz", "600", "-trim"])
+        if self.gray:
+            mogrify.extend(["-colorspace", "GRAY"])
+        if self.width:
+            mogrify.extend(["-resize", str(self.width) + ">"])
+        return tuple(mogrify)
+
+    @cached_property
+    def copy_class(self) -> bool:
+        if self.__arg.copy_class:
+            return True
+        if '--copy-class' in self._extra_arguments:
+            return True
+        return False
+
+    def get_class_copy_nodes(self) -> Tuple[bs4.Tag, ...]:
+        if not self.isHtml:
+            return tuple()
+        if not self.copy_class:
+            return tuple()
+        if not self.file_css or not os.path.isfile(self.file_css):
+            return tuple()
+        with open(self.file_css, "r") as f:
+            mth: List[str] = re.findall(r"\.(\S+)", f.read())
+            class_names = [c.rstrip(",") for c in mth]
+            if len(class_names) == 0:
+                return tuple()
+            class_names = "." + ", .".join(class_names)
+            return tuple(self._soup.select(class_names))
+
+    @cached_property
+    def _yml(self) -> dict:
+        if not self.isMd:
+            return {}
+        with open(self.fuente, "r") as f:
+            itr = iter(f)
+            if next(itr) != '---\n':
+                return {}
+            yml = ""
+            for line in itr:
+                if line == '---\n':
+                    return yaml.load(yml.rstrip(), Loader=yaml.FullLoader)
+                yml += line
+        return {}
+
+    @cached_property
+    def _soup(self):
+        if not self.isHtml:
+            return bs4.BeautifulSoup('<xml></xml>', "lxml")
+        with open(self.fuente, "rb") as f:
+            return bs4.BeautifulSoup(f, "lxml")
+
+    def _get_meta_content(self, name: str) -> Union[str, None]:
+        n = self._soup.find("meta", {"name": name})
+        if n is None:
+            return None
+        txt = n.attrs.get("content")
+        if txt is None:
+            return None
+        txt = re_sp.sub(" ", txt).strip()
+        if len(txt) == 0:
+            return None
+        return txt
+
+    @cached_property
+    def _extra_arguments(self):
+        extra = self._yml.get("pandoc") or self._get_meta_content("pandoc")
+        if extra is None:
+            return ()
+        print("Argumentos extra: "+extra)
+        extra = extra.split(" ")
+        return tuple(extra)
+
+    @cached_property
+    def cover_txt(self) -> Union[str, None]:
+        return self._yml.get('txt-cover') or self._get_meta_content('txt_cover')
+
+    @cached_property
+    def author(self):
+        author = self._yml.get('author')
+        if author:
+            return author
+        creator = self._yml.get('creator')
+        if not isinstance(creator, list):
+            return None
+        authors = [a['text'] for a in creator if a['role'] == 'author']
+        if len(authors) == 0:
+            return None
+        return ", ".join(authors)
+
+    @cached_property
+    def file_cover_image(self) -> Union[str, None]:
+        file = self.__get_file_cover_image()
+        if not (file or "").startswith("http"):
+            return file
+        print("Descargando portada de " + file)
+        _, extension = os.path.splitext(file)
+        dwn = self.tmp.source + "/cover" + extension
+        descargar(file, dwn)
+        return dwn
+
+    def __get_file_cover_image(self) -> Union[str, None]:
+        if self.__arg.cover:
+            return self.__arg.cover
+        c = self._soup.find("meta", attrs={'property': "og:image"})
+        if c and "content" in c.attrs:
+            print("Recuperada portada de los metadatos del html")
+            return c.attrs["content"]
+
+        if self.cover_txt:
+            print(f"Creando portada '{self.cover_txt}'")
+            return generate_cover(self.cover_txt, None, None, output_path=self.tmp.source + "/cover.png")
+        if self._yml.get('cover-image'):
+            return None
+        title = self._yml.get('title')
+        if title is None:
+            return None
+        print("Creando portada desde metadatos")
+        return generate_cover(
+            title,
+            self.author,
+            self._yml.get('cover-date') or self._yml.get('date'),
+            output_path=self.tmp.source + "/cover.png"
+        )
+
+    @cached_property
+    def ebook_meta(self) -> Tuple[str, ...]:
+        ebook_meta = self._yml.get('ebook-meta') or self._get_meta_content('ebook-meta')
+        tags = self._yml.get("tags", [])
+        category = self._yml.get('category')
+        metadata = []
+        if len(tags) > 0:
+            metadata.extend(["--tags", "," .join(tags)])
+        if category:
+            metadata.extend(["--category", category])
+        if ebook_meta:
+            metadata.extend(str_to_cmd(ebook_meta))
+        return tuple(metadata)
+
+    @cached_property
+    def file_metadata(self) -> Union[str, None]:
+        meta = []
+        m: bs4.Tag
+        for m in self._soup.findAll("meta", {"name": re.compile(r"^dc\.", re.IGNORECASE)}):
+            n = m.attrs["name"].lower()
+            c = m.attrs["content"]
+            n = "dc:" + n[3:]
+            meta.append(f"<{n}>{c}</{n}>")
+        if len(meta) == 0:
+            return None
+        print("Recuperados metadatos del html")
+        file = self.tmp.source + "/metadata.xml"
+        with open(file, "w") as file:
+            file.write("\n".join(meta))
+        return file
+
+    @cached_property
+    def file_css(self) -> Union[str, None]:
+        file = self.__get_file_css()
+        if not (file or "").startswith("http"):
+            return file
+        print("Descargando css de " + file)
+        dwn = self.tmp.source + "/" + os.path.basename(file)
+        descargar(file, dwn)
+        return dwn
+
+    def __get_file_css(self) -> Union[str, None]:
+        if self.__arg.css:
+            return self.__arg.css
+        c = soup.find("link", attrs={'media': "print"})
+        if c and "type" in c.attrs and c.attrs["type"] == "text/css":
+            css: str = c.attrs.get("href")
+            if not isinstance(css, str):
+                return None
+            if css.startswith("http") or os.path.isfile(css):
+                return css
+            full_css = str(self.dir_fuente)
+            if not css.startswith("/"):
+                full_css = full_css + "/"
+            css = full_css + css
+            return os.path.realpath(css)
+        return None
+
+    @cached_property
+    def extra_args(self):
+        extra_args = list(self._extra_arguments)
+        if '--copy-class' in extra_args:
+            extra_args.remove('--copy-class')
+        if '--toc-depth' not in extra_args:
+            extra_args.extend(['--toc-depth', str(self.__arg.toc)])
+        if self.file_cover_image and '--epub-cover-image' not in extra_args:
+            extra_args.extend(['--epub-cover-image', self.file_cover_image])
+        if self.file_metadata and '--epub-metadata' not in extra_args:
+            extra_args.extend(['--epub-metadata', self.file_metadata])
+        if self.file_css and '--css' not in extra_args:
+            extra_args.extend(['--css', self.file_css])
+        if self.isHtml and '--parse-raw' not in extra_args:
+            extra_args.append('--parse-raw')
+        if self.__arg.chapter_level and '--split-level' not in extra_args:
+            extra_args.extend(['--split-level', self.__arg.chapter_level])
+        return tuple(extra_args)
+
+    @property
+    def dc_date(self) -> Union[str, int, None]:
+        return self._yml.get('date')
+
+    @property
+    def notas(self) -> Union[str, None]:
+        return self.__arg.notas
+
+    @property
+    def extract(self) -> Union[str, None]:
+        return self.__arg.extract
+
+M = MetaData(parser.parse_args())
 
 tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
 tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
@@ -188,7 +467,7 @@ def minify_soup(soup: bs4.Tag):
     def __re(rg: str):
         return re.compile(rg, re.MULTILINE | re.DOTALL | re.UNICODE)
 
-    h = str(soup) # htmlmin.minify(str(soup), remove_empty_space=True)
+    h = str(soup)  # htmlmin.minify(str(soup), remove_empty_space=True)
 
     for t in tag_concat:
         r = __re(r"</" + t + r">(\s*)<" + t + ">")
@@ -230,10 +509,10 @@ def simplifica(s):
 
 def optimizar(s):
     antes = os.path.getsize(s)
-    c = tmp_wks + "/" + os.path.basename(s)
+    c = M.tmp.wks + "/" + os.path.basename(s)
     shutil.copy(s, c)
-    if len(mogrify) > 1:
-        call(mogrify + [c])
+    if len(M.mogrify) > 1:
+        call(list(M.mogrify) + [c])
     call(["picopt", "--quiet", "--destroy_metadata",
           "--comics", "--enable_advpng", c])
     despues = os.path.getsize(c)
@@ -241,36 +520,7 @@ def optimizar(s):
         shutil.move(c, s)
 
 
-def get_yaml(md):
-    with open(md, "r") as f:
-        itr = iter(f)
-        if next(itr) != '---\n':
-            return {}
-        yml = ""
-        for line in itr:
-            if line == '---\n':
-                return yaml.load(yml.rstrip(), Loader=yaml.FullLoader)
-            yml += line
-    return {}
-
-
-def extra_arguments(extra):
-    if not extra:
-        return
-    if isinstance(extra, bs4.Tag):
-        extra = extra.attrs["content"]
-    extra = re_sp.sub(" ", extra).strip()
-    if len(extra) == 0:
-        return
-    print("Argumentos extra: "+extra)
-    extra = extra.split(" ")
-    if '--copy-class' in extra:
-        arg.copy_class = True
-        extra.remove('--copy-class')
-    extra_args.extend(extra)
-
-
-def str_to_cmd(s):
+def str_to_cmd(s: str):
     arr = []
     flag = True
     for i in s.split('"'):
@@ -283,135 +533,26 @@ def str_to_cmd(s):
             arr.append(c)
     return arr
 
-
-tmp = tempfile.mkdtemp(prefix=prefix)
-
-print("Directorio de trabajo: " + tmp)
-
-tmp_in = tmp + "/in"
-tmp_out = tmp + "/out"
-tmp_wks = tmp + "/wks"
-
-os.mkdir(tmp_in)
-os.mkdir(tmp_out)
-os.mkdir(tmp_wks)
-
-clases = []
-extra_args = []
-yml = {}
-
-if arg.md:
-    yml = get_yaml(arg.fuente)
-    extra_arguments(yml.get("pandoc", None))
-
-if arg.html:
-    with open(arg.fuente, "rb") as f:
-        soup = bs4.BeautifulSoup(f, "lxml")
-        extra_arguments(soup.find("meta", {"name": "pandoc"}))
-        ebook_meta = soup.find("meta", {"name": "ebook-meta"})
-        if ebook_meta:
-            yml["ebook-meta"] = ebook_meta.attrs["content"]
-        txt_cover = soup.find("meta", {"name": "txt_cover"})
-        if txt_cover:
-            yml["txt-cover"] = txt_cover.attrs["content"]
-        if not arg.metadata:
-            meta = ""
-            for m in soup.findAll("meta", {"name": re.compile(r"^dc\.", re.IGNORECASE)}):
-                n = m.attrs["name"].lower()
-                c = m.attrs["content"]
-                n = "dc:" + n[3:]
-                meta += "<%s>%s</%s>\n" % (n, c, n)
-            if len(meta) > 0:
-                print("Recuperados metadatos del html")
-                arg.metadata = tmp_in + "/metadata.xml"
-                with open(arg.metadata, "w") as file:
-                    file.write(meta)
-        if not arg.cover:
-            c = soup.find("meta", attrs={'property': "og:image"})
-            if c and "content" in c.attrs:
-                print("Recuperada portada de los metadatos del html")
-                arg.cover = c.attrs["content"]
-        if not arg.css:
-            c = soup.find("link", attrs={'media': "print"})
-            if c and "type" in c.attrs and c.attrs["type"] == "text/css":
-                arg.css = c.attrs["href"]
-                if not arg.css.startswith("http") and not os.path.isfile(arg.css):
-                    dir_fuente = os.path.dirname(arg.fuente)
-                    if not arg.css.startswith("/"):
-                        dir_fuente = dir_fuente + "/"
-                    arg.css = dir_fuente + arg.css
-                    arg.css = os.path.realpath(arg.css)
-        if arg.css and arg.copy_class:
-            with open(arg.css, "r") as c:
-                class_names = [c.rstrip(",")
-                               for c in class_name.findall(c.read())]
-                if len(class_names):
-                    class_names = "." + ", .".join(class_names)
-                    clases = soup.select(class_names)
-if "txt-cover" in yml:
-    arg.txt_cover = yml['txt-cover']
-
-if arg.txt_cover:
-    print("Creando portada '%s'" % arg.txt_cover)
-    arg.cover = generate_cover(arg.txt_cover, None, None, output_path=tmp_in + "/cover.png")
-
-if arg.cover and arg.cover.startswith("http"):
-    print("Descargando portada de " + arg.cover)
-    _, extension = os.path.splitext(arg.cover)
-    dwn = tmp_in + "/cover" + extension
-    descargar(arg.cover, dwn)
-    arg.cover = dwn
-if arg.cover is None and yml.get('title') and yml.get('cover-image') is None:
-    print("Creando portada desde metadatos")
-    author = yml.get('author') or yml.get('creator')
-    if isinstance(author, list):
-        author = [a['text'] for a in author if a['role'] == 'author']
-        if len(author) == 0:
-            author = None
-        else:
-            author = ", ".join(author)
-    arg.cover = generate_cover(yml['title'], author, yml.get('cover-date') or yml.get('date'), output_path=tmp_in + "/cover.png")
-
-if arg.css and arg.css.startswith("http"):
-    print("Descargando css de " + arg.css)
-    dwn = tmp_in + "/" + os.path.basename(arg.css)
-    descargar(arg.cover, dwn)
-    arg.css = dwn
-
-if '--toc-depth' not in extra_args:
-    extra_args.extend(['--toc-depth', str(arg.toc)])
-if arg.cover and '--epub-cover-image' not in extra_args:
-    extra_args.extend(['--epub-cover-image', arg.cover])
-if arg.metadata and '--epub-metadata' not in extra_args:
-    extra_args.extend(['--epub-metadata', arg.metadata])
-if arg.css and '--css' not in extra_args:
-    extra_args.extend(['--css', arg.css])
-if arg.html and '--parse-raw' not in extra_args:
-    extra_args.append('--parse-raw')
-if arg.chapter_level and '--split-level' not in extra_args:
-    extra_args.extend(['--split-level', arg.chapter_level])
-
-
 print("Convirtiendo con pandoc")
-print(f"pandoc '{arg.fuente}'", *map(str, extra_args), f" -o '{arg.out}'")
-pypandoc.convert_file(arg.fuente,
-                      outputfile=arg.out,
+print(f"pandoc '{M.fuente}'", *map(str, M.extra_args), f" -o '{M.out}'")
+pypandoc.convert_file(M.fuente,
+                      outputfile=M.out,
                       to="epub",
-                      extra_args=extra_args)
+                      extra_args=M.extra_args)
 
-print("Epub inicial de " + sizeof_fmt(os.path.getsize(arg.out)))
+print("Epub inicial de " + sizeof_fmt(os.path.getsize(M.out)))
 
-copy(arg.out, tmp)
+copy(M.out, M.tmp.root)
 
 print("Descomprimiendo epub")
-with zipfile.ZipFile(arg.out, 'r') as zip_ref:
-    zip_ref.extractall(tmp_out)
+with zipfile.ZipFile(M.out, 'r') as zip_ref:
+    zip_ref.extractall(M.tmp.out)
     zip_ref.close()
 
 print("Eliminando navegación innecesaria")
-#os.remove(tmp_out + "/EPUB/nav.xhtml")
-if arg.keep_title:
-    with open(tmp_out + "/EPUB/text/title_page.xhtml", "r") as f:
+#os.remove(M.tmp.out + "/EPUB/nav.xhtml")
+if M.keep_title:
+    with open(M.tmp.out + "/EPUB/text/title_page.xhtml", "r") as f:
         tt_soup = bs4.BeautifulSoup(f, "xml")
     n_body = tt_soup.new_tag("body")
     o_body = tt_soup.find("body")
@@ -421,22 +562,22 @@ if arg.keep_title:
     o_body.attrs.clear()
     o_body.attrs["class"] = "title_page"
     o_body.wrap(n_body)
-    with open(tmp_out + "/EPUB/text/title_page.xhtml", "w") as f:
+    with open(M.tmp.out + "/EPUB/text/title_page.xhtml", "w") as f:
         f.write(str(tt_soup))
 else:
-    os.remove(tmp_out + "/EPUB/text/title_page.xhtml")
+    os.remove(M.tmp.out + "/EPUB/text/title_page.xhtml")
 
-with open(tmp_out + "/EPUB/content.opf", "r+") as f:
-    d = "".join(ln for ln in f.readlines() if not (no_content is not None and no_content.search(ln)) and ln.strip() != "<dc:source></dc:source>")
-    if isinstance(yml.get('date'), int):
-        d = re.sub(r"<dc:date>[^<]+</dc:date>", f"<dc:date>{yml['date']}</dc:date>", d)
+with open(M.tmp.out + "/EPUB/content.opf", "r+") as f:
+    d = "".join(ln for ln in f.readlines() if not (M.re_no_content is not None and M.re_no_content.search(ln)) and ln.strip() != "<dc:source></dc:source>")
+    if isinstance(M.dc_date, int):
+        d = re.sub(r"<dc:date>[^<]+</dc:date>", f"<dc:date>{M.dc_date}</dc:date>", d)
     f.seek(0)
     f.write(d)
     f.truncate()
 
 marcas = {}
 
-with open(tmp_out + "/EPUB/toc.ncx", "r+") as f:
+with open(M.tmp.out + "/EPUB/toc.ncx", "r+") as f:
     soup = bs4.BeautifulSoup(f, "xml")
     nav = soup.find("navMap")
     nav.find("navPoint").extract()
@@ -453,7 +594,7 @@ with open(tmp_out + "/EPUB/toc.ncx", "r+") as f:
     f.write(content)
     f.truncate()
 
-media = tmp_out + "/EPUB/media/"
+media = M.tmp.out + "/EPUB/media/"
 imgs = []
 for g in ['*.jpeg', '*.jpg', '*.png']:
     imgs.extend(glob.glob(media + g))
@@ -473,33 +614,33 @@ while i < len(imgs) - 1:
 if imgdup:
     re_keys = [re.escape(k) for k in imgdup.keys()]
     re_imgdup = re.compile("href=\"(" + "|".join(re_keys) + ")\"")
-    with open(tmp_out + "/EPUB/content.opf", "r+") as f:
+    with open(M.tmp.out + "/EPUB/content.opf", "r+") as f:
         d = [l for l in f.readlines() if not re_imgdup.search(l)]
         f.seek(0)
         f.write("".join(d))
         f.truncate()
     print("Eliminadas imágenes duplicadas")
 
-xhtml = sorted(glob.glob(tmp_out + "/EPUB/text/ch*.xhtml"))
+xhtml = sorted(glob.glob(M.tmp.out + "/EPUB/text/ch*.xhtml"))
 notas = []
 xnota = os.path.basename(xhtml[-1])
 count = 1
 
-if arg.notas:
+if M.notas:
     for html in xhtml:
         with open(html, "r+") as f:
             soup = bs4.BeautifulSoup(f, "xml")
-            if soup.find("h1", text=arg.notas):
+            if soup.find("h1", text=M.notas):
                 xnota = os.path.basename(html)
                 break
 
 
-if os.path.isfile(tmp_out + "/EPUB/nav.xhtml"):
-    with open(tmp_out + "/EPUB/nav.xhtml", "r+") as f:
+if os.path.isfile(M.tmp.out + "/EPUB/nav.xhtml"):
+    with open(M.tmp.out + "/EPUB/nav.xhtml", "r+") as f:
         soup = bs4.BeautifulSoup(f, "xml")
         for a in soup.select("a"):
             href: str = a.attrs.get("href")
-            if href == "text/title_page.xhtml" and not arg.keep_title:
+            if href == "text/title_page.xhtml" and not M.keep_title:
                 a.find_parent("li").extract()
                 continue
             if a and "#" in href:
@@ -518,8 +659,8 @@ for html in xhtml:
     chml = os.path.basename(html)
     with open(html, "r+") as f:
         soup = bs4.BeautifulSoup(f, "xml")
-        if arg.extract:
-            for n in soup.select(arg.extract):
+        if M.extract:
+            for n in soup.select(M.extract):
                 n.extract()
         for c in soup.select("div"):
             if "id" in c.attrs and c.attrs["id"] in marcas:
@@ -584,7 +725,7 @@ for html in xhtml:
                         a['href'] = xnota + a['href']
                         fixNotas[a['id']] = chml
 
-        for c in clases:
+        for c in M.get_class_copy_nodes():
             fnd = soup.find(lambda t: t.name == c.name and re_sp.sub(
                 " ", t.get_text()).strip() == re_sp.sub(" ", c.get_text()).strip())
             if fnd and "class" not in fnd.attrs:
@@ -597,7 +738,7 @@ for html in xhtml:
         for n in soup.select("article"):
             n.name = "div"
 
-        if arg.md:
+        if M.isMd:
             for tr in soup.select("tr"):
                 if "class" in tr:
                     del tr.attrs["class"]
@@ -661,7 +802,7 @@ for html in xhtml:
         f.write(minified)
         f.truncate()
 
-if arg.gray or arg.width or arg.trim and len(imgs) > 0:
+if len(M.mogrify)>1 and len(imgs) > 0:
     print("Limpiando imagenes")
     antes = sum(map(os.path.getsize, imgs))
     call(["exiftool", "-r", "-overwrite_original", "-q", "-all=", media])
@@ -674,32 +815,23 @@ if arg.gray or arg.width or arg.trim and len(imgs) > 0:
     if despu > 0:
         print("Ahorrado optimizando: " + sizeof_fmt(despu))
 
-if arg.execute:
-    call([arg.execute, tmp_out, arg.fuente])
+if M.execute:
+    call([M.execute, M.tmp.out, M.fuente])
 
-with zipfile.ZipFile(arg.out, "w") as zip_file:
-    zip_file.write(tmp_out + '/mimetype', 'mimetype',
+with zipfile.ZipFile(M.out, "w") as zip_file:
+    zip_file.write(M.tmp.out + '/mimetype', 'mimetype',
                    compress_type=zipfile.ZIP_STORED)
-    z = len(tmp_out) + 1
-    for root, dirs, files in os.walk(tmp_out):
+    z = len(M.tmp.out) + 1
+    for root, dirs, files in os.walk(M.tmp.out):
         for f in files:
             path = os.path.join(root, f)
             name = path[z:]
             if name != 'mimetype':
                 zip_file.write(path, name, compress_type=zipfile.ZIP_DEFLATED)
 
-if yml:
-    metadata = []
-    if len(yml.get("tags", [])) > 0:
-        tags = "," .join(yml.get("tags"))
-        metadata.extend(["--tags", tags])
-    if yml.get("category", False):
-        metadata.extend(["--category", yml.get("category")])
-    if "ebook-meta" in yml:
-        metadata.extend(str_to_cmd(yml["ebook-meta"]))
-    if len(metadata) > 0:
-        check_output(["ebook-meta"] + metadata + [arg.out])
+if M.ebook_meta:
+    check_output(["ebook-meta"] + list(M.ebook_meta) + [M.out])
 
-print("Epub final de " + sizeof_fmt(os.path.getsize(arg.out)))
+print("Epub final de " + sizeof_fmt(os.path.getsize(M.out)))
 
-call(["epubcheck", arg.out])
+call(["epubcheck", M.out])
