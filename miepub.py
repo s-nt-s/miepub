@@ -427,14 +427,13 @@ def generate_cover(title: str, author: str = None, date_text: str = None, avatar
     draw.line([(line_x1, line_y), (line_x2, line_y)], fill=fg_color, width=line_width)
 
     # Autor
+    author_y = line_y + (line_y_spacing * 0.8)
     if author:
         author_text = f"{author}"
         author_size = draw.textsize(author_text, font=author_font)
         author_x = (width - author_size[0]) / 2
-        author_y = line_y + line_y_spacing * 1.5
         draw.text((author_x, author_y), author_text, fill=fg_color, font=author_font)
     else:
-        author_y = line_y + line_y_spacing * 1.5
         author_size = (0, 0)
 
     # Avatar
