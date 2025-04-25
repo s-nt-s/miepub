@@ -264,7 +264,7 @@ class MetaData:
 
         if self.cover_txt:
             print(f"Creando portada '{self.cover_txt}'")
-            return generate_cover(self.cover_txt, None, None, output_path=self.tmp.source + "/cover.png")
+            return generate_cover(self.cover_txt, output_path=self.tmp.source + "/cover.png")
         if self._yml.get('cover-image'):
             return None
         title = self._yml.get('title')
@@ -273,8 +273,9 @@ class MetaData:
         print("Creando portada desde metadatos")
         return generate_cover(
             title,
-            self.author,
-            self._yml.get('cover-date') or self._yml.get('date'),
+            author=self.author,
+            date_text=self._yml.get('cover-date') or self._yml.get('date'),
+            avatar=self.cover_avatar,
             output_path=self.tmp.source + "/cover.png"
         )
 
@@ -367,6 +368,14 @@ class MetaData:
     def extract(self) -> Union[str, None]:
         return self.__arg.extract
 
+    @property
+    def cover_avatar(self) -> Union[str, None]:
+        avatar = self._yml.get('cover-avatar')
+        if not isinstance(avatar, str):
+            return None
+        return os.path.abspath(os.path.join(self.dir_fuente, avatar))
+
+
 M = MetaData(parser.parse_args())
 
 tag_concat = ['u', 'ul', 'ol', 'i', 'em', 'strong']
@@ -374,7 +383,7 @@ tag_round = ['u', 'i', 'em', 'span', 'strong', 'a']
 tab_block = ['p', 'li', "tr", "thead", "tbody", 'th', 'td', 'div', 'caption', 'h[1-6]', 'figcaption']
 
 
-def generate_cover(title: str, author: str = None, date_text: str = None, output_path="cover.png"):
+def generate_cover(title: str, author: str = None, date_text: str = None, avatar: str = None, output_path="cover.png"):
     if isinstance(date_text, (date, datetime)):
         date_text = date_text.strftime("%Y")
     if isinstance(date_text, int):
@@ -402,12 +411,13 @@ def generate_cover(title: str, author: str = None, date_text: str = None, output
     line_width = 6
     line_length = width // 3
     line_y_spacing = 60
+    extra_shift = 100 if avatar else 0
 
     # Título (centrado y envuelto)
     wrapped_title = textwrap.fill(title, width=20)
     title_size = draw.multiline_textsize(wrapped_title, font=title_font)
     title_x = (width - title_size[0]) / 2
-    title_y = height * 0.25
+    title_y = height * 0.22 - extra_shift
     draw.multiline_text((title_x, title_y), wrapped_title, fill=fg_color, font=title_font, align="center")
 
     # Línea decorativa
@@ -423,6 +433,26 @@ def generate_cover(title: str, author: str = None, date_text: str = None, output
         author_x = (width - author_size[0]) / 2
         author_y = line_y + line_y_spacing * 1.5
         draw.text((author_x, author_y), author_text, fill=fg_color, font=author_font)
+    else:
+        author_y = line_y + line_y_spacing * 1.5
+        author_size = (0, 0)
+
+    # Avatar
+    if avatar:
+        available_top = author_y + author_size[1] + line_y_spacing
+        available_bottom = height * 0.88 - line_y_spacing
+        available_height = available_bottom - available_top
+        available_width = width - 2 * margin
+
+        avatar_img = Image.open(avatar).convert("L")
+        avatar_w, avatar_h = avatar_img.size
+        scale = min(available_width / avatar_w, available_height / avatar_h)
+        new_size = (int(avatar_w * scale), int(avatar_h * scale))
+        avatar_resized = avatar_img.resize(new_size, Image.LANCZOS)
+
+        avatar_x = int((width - new_size[0]) // 2)
+        avatar_y = int(available_top + (available_height - new_size[1]) // 2)
+        image.paste(avatar_resized, (avatar_x, avatar_y))
 
     # Fecha
     if date_text:
