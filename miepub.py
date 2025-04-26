@@ -389,11 +389,18 @@ def generate_cover(title: str, author: str = None, date_text: str = None, avatar
     if isinstance(date_text, int):
         date_text = str(date_text)
 
-    width, height = 1072, 1448
-    bg_color = 255  # blanco en modo 'L'
-    fg_color = 0    # negro en modo 'L'
+    def get_colors():
+        if avatar is None:
+            return "L", 255, 0
+        img: Image.Image = Image.open(avatar)
+        if img.mode in ("L", "P", "1"):
+            return "L", 255, 0
+        return "RGB", (255, 255, 255), (0, 0, 0)
 
-    image = Image.new("L", (width, height), color=bg_color)
+    width, height = 1072, 1448
+    mode, bg_color, fg_color = get_colors()
+
+    image = Image.new(mode, (width, height), color=bg_color)
     draw = ImageDraw.Draw(image)
 
     title_font = ImageFont.truetype("arial.ttf", 90)
@@ -443,7 +450,7 @@ def generate_cover(title: str, author: str = None, date_text: str = None, avatar
         available_height = available_bottom - available_top
         available_width = width - 2 * margin
 
-        avatar_img = Image.open(avatar).convert("L")
+        avatar_img = Image.open(avatar).convert(mode)
         avatar_w, avatar_h = avatar_img.size
         scale = min(available_width / avatar_w, available_height / avatar_h)
         new_size = (int(avatar_w * scale), int(avatar_h * scale))
