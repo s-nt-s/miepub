@@ -45,7 +45,7 @@ parser.add_argument("--copy-class", help="Copiar el atributo class de la fuente 
                     action='store_true', default=False)
 parser.add_argument("--width", type=int, help="Ancho máximo para las imágenes")
 parser.add_argument(
-    "--notas", help="Nombre del capítulo donde se quieren generar las notas (por defecto se usara el último capítulo)")
+    "--notas", default="Notas", help="Nombre del capítulo donde se quieren generar las notas (por defecto se usara el último capítulo)")
 parser.add_argument(
     "--execute", help="Ejecuta script sobre el epub antes de empaquetarlo")
 parser.add_argument("--keep-title", help="Mantiene la página de título",
@@ -659,7 +659,7 @@ if imgdup:
 
 xhtml = sorted(glob.glob(M.tmp.out + "/EPUB/text/ch*.xhtml"))
 notas = []
-xnota = os.path.basename(xhtml[-1])
+xnota = None
 count = 1
 
 if M.notas:
@@ -669,6 +669,9 @@ if M.notas:
             if soup.find("h1", text=M.notas):
                 xnota = os.path.basename(html)
                 break
+
+if xnota is None:
+    xnota = os.path.basename(xhtml[-1])            
 
 
 if os.path.isfile(M.tmp.out + "/EPUB/nav.xhtml"):
