@@ -16,7 +16,7 @@ from subprocess import call, check_output
 from shutil import copy
 from datetime import date, datetime
 from functools import cached_property
-from typing import Union, NamedTuple, List, Tuple
+from typing import Union, NamedTuple, List, Tuple, Dict
 
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
@@ -374,6 +374,37 @@ class MetaData:
         if not isinstance(avatar, str):
             return None
         return os.path.abspath(os.path.join(self.dir_fuente, avatar))
+
+    @cached_property
+    def notes_format(self) -> Dict[int, str]:
+        obj = self._yml.get('notes')
+        if not isinstance(obj, dict):
+            return {}
+        nt_frm: Dict[int, str] = {}
+        for k, v in list(obj.items()):
+            if len(v) == 0:
+                if -1 in nt_frm:
+                    raise ValueError(f'notes = {obj}')
+                nt_frm[-1] = k
+                continue
+            for nt in tuple(map(int, v.split(","))):
+                if nt in nt_frm:
+                    raise ValueError(f'notes = {obj}')
+                nt_frm[nt] = k
+        return nt_frm
+
+    def parse_note(self, n: str):
+        if not self.notes_format:
+            return n
+        m = re.search(r"\d+", n)
+        if not m:
+            return n
+        num = int(m.group())
+        if num in self.notes_format:
+            return self.notes_format[num].format(num)
+        if -1 in self.notes_format:
+            return self.notes_format[-1].format(num)
+        return n
 
 
 M = MetaData(parser.parse_args())
@@ -738,7 +769,7 @@ for html in xhtml:
                     first_text = p.find(text=True)
                     first_text.replace_with(re.sub(r"^[\s\.]+", "", first_text.string))
                     sup = soup.new_tag("sup")
-                    sup.string = "[" + str(count) + "]"
+                    sup.string = M.parse_note("[" + str(count) + "]")
                     p.insert(0, sup)
                     p.insert(1, " ")
                     notas.append(p)
@@ -752,7 +783,7 @@ for html in xhtml:
                         sup = soup.new_tag("sup")
                         a.string = ""
                         a.append(sup)
-                    sup.string = "[" + str(count) + "]"
+                    sup.string = M.parse_note("[" + str(count) + "]")
                     if a.previous_sibling is None:
                         raise Exception(str(a)+" previous_sibling = None")
                     if len(a.previous_sibling.string) > 0 and len(a.previous_sibling.strip()) == 0:
