@@ -559,7 +559,7 @@ def minify_soup(soup: bs4.Tag):
 def descargar(url, dwn):
     try:
         urllib.request.urlretrieve(url, dwn)
-    except:
+    except Exception:
         call(["wget", url, "--quiet", "-O", dwn])
 
 
@@ -718,6 +718,7 @@ if os.path.isfile(M.tmp.out + "/EPUB/nav.xhtml"):
                 despues = simplifica(antes)
                 if despues and antes != despues:
                     a.attrs["href"] = href + "#" + despues
+
         minified = minify_soup(soup)
         minified = re.sub(r' xmlns:="', ' xmlns="', minified)
         f.seek(0)
@@ -803,7 +804,7 @@ for html in xhtml:
 
         for img in soup.findAll("img"):
             if "alt" not in img.attrs:
-                img.attrs["alt"]=""
+                img.attrs["alt"] = ""
 
         for n in soup.select("article"):
             n.name = "div"
@@ -866,6 +867,12 @@ for html in xhtml:
             chls = a.select(":scope *")
             if len(chls) == 1 and chls[0] == img:
                 add_class(a, "pandoc_a_img")
+
+        # Kobo no lo respeta ni así
+        # for pre_code in soup.select("pre"):
+        #     if pre_code.select(":scope > *") and len(pre_code.select("*")) == 1:
+        #         pre_code.attrs['style'] = "white-space: pre !important; font-family: monospace !important; text-align: left !important;"
+
         minified = minify_soup(soup)
         minified = re.sub(r' xmlns:="', ' xmlns="', minified)
         f.seek(0)
