@@ -743,6 +743,8 @@ for html in xhtml:
                 ids.attrs["id"] = despues
         for p in soup.select("table p") + soup.select("figure p"):
             p.unwrap()
+        for legend in soup.select("fieldset > p > legend"):
+            legend.parent.unwrap()
         for i in soup.select("img"):
             if "src" in i.attrs and i.attrs["src"] in imgdup:
                 i.attrs["src"] = imgdup[i.attrs["src"]]
